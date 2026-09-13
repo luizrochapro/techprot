@@ -1,0 +1,383 @@
+import { i18n } from './i18n.js';
+import { TechProtSerializer } from '../io/TechProtSerializer.js';
+import { TechProtParser } from '../io/TechProtParser.js';
+import { SampleSystems } from '../io/SampleSystems.js';
+import { PowerFlow } from '../simulation/PowerFlow.js';
+import { ShortCircuit } from '../simulation/ShortCircuit.js';
+import { Harmonics } from '../simulation/Harmonics.js';
+import { LabelManagerDialog } from './LabelManagerDialog.js';
+import { ReportDialog } from './ReportDialog.js';
+import { StabilityDialog } from './StabilityDialog.js';
+import { Dialogs } from './Dialogs.js';
+
+export class MenuBar {
+    constructor(navElement, app) {
+        this.nav = navElement;
+        this.app = app;
+        this.init();
+    }
+
+    init() {
+        this.nav.innerHTML = `
+            <div class="menu-bar-container">
+                <div class="brand">
+                    <span class="brand-logo">⚡</span>
+                    <span class="brand-name">TechProt <span class="brand-badge">Web</span></span>
+                </div>
+
+                <div class="menu-items">
+                    <!-- Arquivo -->
+                    <div class="menu-dropdown">
+                        <button class="menu-btn" data-i18n="file">${i18n.t('file')}</button>
+                        <div class="dropdown-content">
+                            <a href="#" id="menuNew"><span class="menu-icon">📄</span> <span data-i18n="newProject">${i18n.t('newProject')}</span></a>
+                            <label for="fileInputOpen" class="dropdown-file-label"><span class="menu-icon">📂</span> <span data-i18n="openProject">${i18n.t('openProject')}</span></label>
+                            <input type="file" id="fileInputOpen" accept=".tp,.psp,.xml" style="display:none;">
+                            <a href="#" id="menuSave"><span class="menu-icon">💾</span> <span data-i18n="saveProject">${i18n.t('saveProject')}</span></a>
+                            <div class="menu-divider"></div>
+                            <a href="#" id="menuExportPng"><span class="menu-icon">🖼️</span> <span data-i18n="exportPng">${i18n.t('exportPng')}</span></a>
+                        </div>
+                    </div>
+
+                    <!-- Editar -->
+                    <div class="menu-dropdown">
+                        <button class="menu-btn" data-i18n="edit">${i18n.t('edit')}</button>
+                        <div class="dropdown-content">
+                            <a href="#" id="menuAlignGrid"><span class="menu-icon">📐</span> <span data-i18n="alignGrid">${i18n.t('alignGrid')}</span></a>
+                            <a href="#" id="menuDelete"><span class="menu-icon">🗑️</span> <span data-i18n="dialogs.delete">${i18n.t('dialogs.delete')}</span></a>
+                            <div class="menu-divider"></div>
+                            <a href="#" id="menuOptions"><span class="menu-icon">⚙️</span> <span data-i18n="options">${i18n.t('options')}</span></a>
+                        </div>
+                    </div>
+
+                    <!-- Exibir -->
+                    <div class="menu-dropdown">
+                        <button class="menu-btn" data-i18n="view">${i18n.t('view')}</button>
+                        <div class="dropdown-content">
+                            <a href="#" id="menuToggleGrid"><span class="menu-icon">▦</span> <span data-i18n="showGrid">${i18n.t('showGrid')}</span> ✓</a>
+                            <a href="#" id="menuToggleToolbar"><span class="menu-icon">🎛️</span> <span data-i18n="floatingToolbar">${i18n.t('floatingToolbar')}</span> ✓</a>
+                            <a href="#" id="menuToggleFlowAnim"><span class="menu-icon">➡️</span> <span>Animar Fluxo</span> ${localStorage.getItem('techprot_animate_flow') !== '0' ? '✓' : ''}</a>
+                            <a href="#" id="menuFitScreen"><span class="menu-icon">🔍</span> <span data-i18n="fitScreen">${i18n.t('fitScreen')}</span></a>
+                            <div class="menu-divider"></div>
+                            <a href="#" id="menuVoltageLevels"><span class="menu-icon">🎨</span> Cores dos Níveis de Tensão...</a>
+                            <div class="menu-divider"></div>
+                            <a href="#" id="menuTheme"><span class="menu-icon">🌓</span> Alternar Tema (Escuro/Claro)</a>
+                            <a href="#" id="menuLang"><span class="menu-icon">🌐</span> Idioma: PT-BR / EN</a>
+                        </div>
+                    </div>
+
+                    <!-- Simulação -->
+                    <div class="menu-dropdown">
+                        <button class="menu-btn" data-i18n="simulation">${i18n.t('simulation')}</button>
+                        <div class="dropdown-content">
+                            <a href="#" id="menuPowerFlow"><span class="menu-icon">⚡</span> <span data-i18n="runPowerFlow">${i18n.t('runPowerFlow')}</span> (F5)</a>
+                            <a href="#" id="menuFault"><span class="menu-icon">💥</span> <span data-i18n="runFault">${i18n.t('runFault')}</span></a>
+                            <a href="#" id="menuHarmonics"><span class="menu-icon">〰️</span> <span data-i18n="runHarmonics">${i18n.t('runHarmonics')}</span></a>
+                            <a href="#" id="menuStability"><span class="menu-icon">📈</span> Estabilidade Eletromecânica...</a>
+                            <div class="menu-divider"></div>
+                            <a href="#" id="menuReport"><span class="menu-icon">📊</span> <span data-i18n="dataReport">${i18n.t('dataReport')}</span></a>
+                        </div>
+                    </div>
+
+                    <!-- Rótulos -->
+                    <div class="menu-dropdown">
+                        <button class="menu-btn" data-i18n="labels">${i18n.t('labels')}</button>
+                        <div class="dropdown-content">
+                            <a href="#" id="menuLabelManager"><span class="menu-icon">🏷️</span> <span data-i18n="labelManager">${i18n.t('labelManager')}</span></a>
+                            <a href="#" id="menuUpdateLabels"><span class="menu-icon">🔄</span> Atualizar Rótulos</a>
+                        </div>
+                    </div>
+
+                    <!-- Exemplos -->
+                    <div class="menu-dropdown">
+                        <button class="menu-btn" data-i18n="samples">${i18n.t('samples')}</button>
+                        <div class="dropdown-content">
+                            <a href="#" id="menuSample14"><span class="menu-icon">⚡</span> <span data-i18n="sampleIEEE14">${i18n.t('sampleIEEE14')}</span></a>
+                            <a href="#" id="menuSample14Stab"><span class="menu-icon">📈</span> IEEE 14 Barras (Estabilidade Transitória)</a>
+                            <a href="#" id="menuSample9"><span class="menu-icon">🎚️</span> <span data-i18n="sampleIEEE9OLTC">${i18n.t('sampleIEEE9OLTC')}</span></a>
+                        </div>
+                    </div>
+
+                    <!-- Ajuda -->
+                    <div class="menu-dropdown">
+                        <button class="menu-btn" data-i18n="help">${i18n.t('help')}</button>
+                        <div class="dropdown-content">
+                            <a href="#" id="menuAbout"><span class="menu-icon">ℹ️</span> Sobre o TechProt Web</a>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Action Buttons -->
+                <div class="quick-actions">
+                    <button class="btn btn-action" id="btnQuickPF" title="Executar Fluxo de Carga (F5)">
+                        ▶ <span data-i18n="runPowerFlow">${i18n.t('runPowerFlow')}</span>
+                    </button>
+                    <button class="btn btn-icon" id="btnQuickFlowAnim" title="Animar Fluxo de Potência (setas)">
+                        ➡️
+                    </button>
+                    <button class="btn btn-icon" id="btnQuickStability" title="Estabilidade Eletromecânica">
+                        📈
+                    </button>
+                    <button class="btn btn-icon" id="btnQuickReport" title="Relatórios">
+                        📊
+                    </button>
+                    <button class="btn btn-icon" id="btnQuickAlign" title="Alinhar Seleção à Grade">
+                        📐
+                    </button>
+                </div>
+            </div>
+        `;
+
+        this.bindEvents();
+    }
+
+    bindEvents() {
+        const app = this.app;
+        const model = app.model;
+        const canvas = app.canvas;
+
+        // Novo
+        this.nav.querySelector('#menuNew').addEventListener('click', (e) => {
+            e.preventDefault();
+            if (confirm('Deseja iniciar um novo projeto? As alterações não salvas serão perdidas.')) {
+                model.clear();
+                app.openedFileName = null;
+                canvas.requestRender();
+            }
+        });
+
+        // Abrir .tp (compatível com .psp/.xml legados)
+        this.nav.querySelector('#fileInputOpen').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    TechProtParser.parse(event.target.result, model);
+                    app.openedFileName = file.name;  // mantém nome original para Salvar
+                    canvas.fitToScreen();
+                    app.showNotification(`Projeto "${model.name}" carregado com sucesso!`);
+                } catch (err) {
+                    alert('Erro ao abrir arquivo .tp: ' + err.message);
+                }
+            };
+            reader.readAsText(file);
+            e.target.value = '';
+        });
+
+        // Salvar .tp — reutiliza o nome original quando disponível
+        this.nav.querySelector('#menuSave').addEventListener('click', (e) => {
+            e.preventDefault();
+            const xml = TechProtSerializer.serialize(model);
+            const filename = app.openedFileName || `${model.name || 'projeto'}.tp`;
+            TechProtSerializer.downloadFile(xml, filename);
+            app.showNotification(`Projeto baixado como arquivo ${filename}!`);
+        });
+
+        // Exportar PNG
+        this.nav.querySelector('#menuExportPng').addEventListener('click', (e) => {
+            e.preventDefault();
+            const dataUrl = canvas.canvas.toDataURL('image/png');
+            const a = document.createElement('a');
+            a.href = dataUrl;
+            a.download = `${model.name || 'diagrama'}.png`;
+            a.click();
+        });
+
+        // Alinhar
+        const alignAction = (e) => {
+            if (e) e.preventDefault();
+            canvas.alignSelectedToGrid();
+            app.showNotification('Elementos selecionados alinhados à grade!');
+        };
+        this.nav.querySelector('#menuAlignGrid').addEventListener('click', alignAction);
+        this.nav.querySelector('#btnQuickAlign').addEventListener('click', alignAction);
+
+        // Deletar
+        this.nav.querySelector('#menuDelete').addEventListener('click', (e) => {
+            e.preventDefault();
+            canvas.deleteSelected();
+        });
+
+        // Opções
+        this.nav.querySelector('#menuOptions').addEventListener('click', (e) => {
+            e.preventDefault();
+            Dialogs.showSettingsModal(model, app);
+        });
+
+        // Grade
+        this.nav.querySelector('#menuToggleGrid').addEventListener('click', (e) => {
+            e.preventDefault();
+            canvas.showGrid = !canvas.showGrid;
+            canvas.requestRender();
+            e.target.innerHTML = `<span class="menu-icon">▦</span> <span data-i18n="showGrid">${i18n.t('showGrid')}</span> ${canvas.showGrid ? '✓' : ''}`;
+        });
+
+        // Barra flutuante
+        this.nav.querySelector('#menuToggleToolbar').addEventListener('click', (e) => {
+            e.preventDefault();
+            const newVis = !app.floatingToolbar.visible;
+            app.floatingToolbar.setVisible(newVis);
+            e.target.innerHTML = `<span class="menu-icon">🎛️</span> <span data-i18n="floatingToolbar">${i18n.t('floatingToolbar')}</span> ${newVis ? '✓' : ''}`;
+        });
+
+        // Animar fluxo de potência (setas) — toggle centralizado, sincroniza
+        // menu Exibir + quick-action + localStorage (chave techprot_animate_flow).
+        const flowAnimMenuItem = this.nav.querySelector('#menuToggleFlowAnim');
+        const flowAnimBtn = this.nav.querySelector('#btnQuickFlowAnim');
+        const setAnimateFlow = (on) => {
+            canvas.animateFlow = !!on;
+            localStorage.setItem('techprot_animate_flow', canvas.animateFlow ? '1' : '0');
+            canvas.requestRender();
+            flowAnimMenuItem.innerHTML = `<span class="menu-icon">➡️</span> <span>Animar Fluxo</span> ${canvas.animateFlow ? '✓' : ''}`;
+            flowAnimBtn.classList.toggle('active', canvas.animateFlow);
+            flowAnimBtn.title = canvas.animateFlow
+                ? 'Animar Fluxo de Potência: ATIVO (clique para pausar)'
+                : 'Animar Fluxo de Potência: PAUSADO (clique para ativar)';
+        };
+        flowAnimMenuItem.addEventListener('click', (e) => {
+            e.preventDefault();
+            setAnimateFlow(!canvas.animateFlow);
+        });
+        flowAnimBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            setAnimateFlow(!canvas.animateFlow);
+        });
+        // Estado inicial do botão conforme preferência persistida
+        flowAnimBtn.classList.toggle('active', canvas.animateFlow !== false);
+        flowAnimBtn.title = canvas.animateFlow !== false
+            ? 'Animar Fluxo de Potência: ATIVO (clique para pausar)'
+            : 'Animar Fluxo de Potência: PAUSADO (clique para ativar)';
+
+        // Ajustar
+        this.nav.querySelector('#menuFitScreen').addEventListener('click', (e) => {
+            e.preventDefault();
+            canvas.fitToScreen();
+        });
+
+        // Cores dos Níveis de Tensão
+        this.nav.querySelector('#menuVoltageLevels')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            Dialogs.showVoltageLevelsModal(model, () => canvas.requestRender());
+        });
+
+        // Tema
+        this.nav.querySelector('#menuTheme').addEventListener('click', (e) => {
+            e.preventDefault();
+            app.toggleTheme();
+        });
+
+        // Idioma
+        this.nav.querySelector('#menuLang').addEventListener('click', (e) => {
+            e.preventDefault();
+            app.toggleLanguage();
+        });
+
+        // Fluxo de Carga
+        const runPF = (e) => {
+            if (e) e.preventDefault();
+            const res = PowerFlow.solve(model);
+            canvas.requestRender();
+            app.showNotification(res.message, res.success ? 'success' : 'error');
+            if (res.success) {
+                // Auto-open report if desired or user can click report
+            }
+        };
+        this.nav.querySelector('#menuPowerFlow').addEventListener('click', runPF);
+        this.nav.querySelector('#btnQuickPF').addEventListener('click', runPF);
+
+        // Curto-circuito
+        this.nav.querySelector('#menuFault').addEventListener('click', (e) => {
+            e.preventDefault();
+            const res = ShortCircuit.solve(model);
+            canvas.requestRender();
+            app.showNotification(res.message, res.success ? 'success' : 'error');
+        });
+
+        // Harmônicos
+        this.nav.querySelector('#menuHarmonics').addEventListener('click', (e) => {
+            e.preventDefault();
+            const res = Harmonics.solve(model);
+            canvas.requestRender();
+            app.showNotification(res.message, res.success ? 'success' : 'error');
+        });
+
+        // Estabilidade Eletromecânica
+        const showStability = (e) => {
+            if (e) e.preventDefault();
+            StabilityDialog.show(model, app);
+        };
+        this.nav.querySelector('#menuStability').addEventListener('click', showStability);
+        this.nav.querySelector('#btnQuickStability').addEventListener('click', showStability);
+
+        // Relatório
+        const showRep = (e) => {
+            if (e) e.preventDefault();
+            ReportDialog.show(model);
+        };
+        this.nav.querySelector('#menuReport').addEventListener('click', showRep);
+        this.nav.querySelector('#btnQuickReport').addEventListener('click', showRep);
+
+        // Gerenciador de Rótulos
+        this.nav.querySelector('#menuLabelManager').addEventListener('click', (e) => {
+            e.preventDefault();
+            LabelManagerDialog.show(model, () => canvas.requestRender());
+        });
+
+        this.nav.querySelector('#menuUpdateLabels').addEventListener('click', (e) => {
+            e.preventDefault();
+            model.updateAllLabels();
+            canvas.requestRender();
+            app.showNotification('Rótulos do diagrama atualizados!');
+        });
+
+        // Exemplos
+        this.nav.querySelector('#menuSample14').addEventListener('click', (e) => {
+            e.preventDefault();
+            SampleSystems.loadIEEE14(model);
+            PowerFlow.solve(model);
+            canvas.fitToScreen();
+            app.showNotification('Sistema IEEE 14 Barras carregado com sucesso!');
+        });
+
+        this.nav.querySelector('#menuSample14Stab').addEventListener('click', (e) => {
+            e.preventDefault();
+            SampleSystems.loadIEEE14Stability(model);
+            PowerFlow.solve(model);
+            canvas.fitToScreen();
+            app.showNotification('Sistema IEEE 14 Barras (Estabilidade) carregado com distúrbio na Barra 4!');
+            StabilityDialog.show(model, app);
+        });
+
+        this.nav.querySelector('#menuSample9').addEventListener('click', (e) => {
+            e.preventDefault();
+            SampleSystems.loadIEEE9OLTC(model);
+            PowerFlow.solve(model);
+            canvas.fitToScreen();
+            app.showNotification('Sistema IEEE 9 Barras com OLTC carregado com sucesso!');
+        });
+
+        // Sobre
+        this.nav.querySelector('#menuAbout').addEventListener('click', (e) => {
+            e.preventDefault();
+            alert('TechProt Web v1.0\nPlataforma para Estudos de Sistemas Elétricos de Potência (Versão Web)\nSuporta Fluxo de Carga (NR e GS), Controle por Comutador de Tap Sob Carga (OLTC), Curto-Circuito, Harmônicos e compatibilidade total com arquivos .tp (e legados .psp).');
+        });
+
+        // Keyboard shortcuts
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'F5') {
+                e.preventDefault();
+                runPF();
+            } else if (e.key === 'Delete' || e.key === 'Backspace') {
+                if (document.activeElement.tagName !== 'INPUT') {
+                    canvas.deleteSelected();
+                }
+            } else if (e.ctrlKey && e.key.toLowerCase() === 's') {
+                e.preventDefault();
+                const xml = TechProtSerializer.serialize(model);
+                const filename = app.openedFileName || `${model.name || 'projeto'}.tp`;
+                TechProtSerializer.downloadFile(xml, filename);
+            }
+        });
+    }
+}

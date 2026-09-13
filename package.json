@@ -1,0 +1,19 @@
+{
+  "name": "techprot-web",
+  "version": "1.0.0",
+  "description": "TechProt - Plataforma de Estudos em Sistemas Elétricos de Potência",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [
+    "power-systems",
+    "power-flow",
+    "oltc",
+    "electrical-engineering",
+    "cad"
+  ],
+  "author": "Luiz Gonzaga Rocha Junior, Thales Lima Oliveira",
+  "license": "GPL-3.0"
+}
