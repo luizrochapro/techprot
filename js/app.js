@@ -30,6 +30,9 @@ export class App {
         // para que o botão Salvar re-use o mesmo nome sem criar "novo arquivo".
         this.openedFileName = null;
 
+        // ID do projeto salvo na nuvem (Convex)
+        this.cloudId = null;
+
         this.init();
     }
 

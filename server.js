@@ -29,6 +29,13 @@ const MIME_TYPES = {
 
 const server = http.createServer((req, res) => {
     let reqPath = req.url.split('?')[0];
+    if (reqPath === '/config.js') {
+        const convexUrl = process.env.CONVEX_URL || 'http://127.0.0.1:3210';
+        const body = `window.TECHPROT_CONVEX_URL=${JSON.stringify(convexUrl)};`;
+        res.writeHead(200, { 'Content-Type': MIME_TYPES['.js'], 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*' });
+        res.end(body);
+        return;
+    }
     if (reqPath === '/') reqPath = '/index.html';
 
     const filePath = path.join(__dirname, reqPath);

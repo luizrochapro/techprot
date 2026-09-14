@@ -9,6 +9,7 @@ import { LabelManagerDialog } from './LabelManagerDialog.js';
 import { ReportDialog } from './ReportDialog.js';
 import { StabilityDialog } from './StabilityDialog.js';
 import { Dialogs } from './Dialogs.js';
+import { CloudPersistence } from '../io/CloudPersistence.js';
 
 export class MenuBar {
     constructor(navElement, app) {
@@ -31,6 +32,9 @@ export class MenuBar {
                         <button class="menu-btn" data-i18n="file">${i18n.t('file')}</button>
                         <div class="dropdown-content">
                             <a href="#" id="menuNew"><span class="menu-icon">📄</span> <span data-i18n="newProject">${i18n.t('newProject')}</span></a>
+                            <a href="#" id="menuCloudOpen"><span class="menu-icon">☁️</span> Abrir da Nuvem…</a>
+                            <a href="#" id="menuCloudSave"><span class="menu-icon">☁️</span> Salvar na Nuvem…</a>
+                            <a href="#" id="menuCloudDelete"><span class="menu-icon">☁️</span> Excluir da Nuvem…</a>
                             <label for="fileInputOpen" class="dropdown-file-label"><span class="menu-icon">📂</span> <span data-i18n="openProject">${i18n.t('openProject')}</span></label>
                             <input type="file" id="fileInputOpen" accept=".tp,.psp,.xml" style="display:none;">
                             <a href="#" id="menuSave"><span class="menu-icon">💾</span> <span data-i18n="saveProject">${i18n.t('saveProject')}</span></a>
@@ -163,6 +167,77 @@ export class MenuBar {
             };
             reader.readAsText(file);
             e.target.value = '';
+        });
+
+        // Abrir da Nuvem (Cloud Persistence)
+        this.nav.querySelector('#menuCloudOpen').addEventListener('click', async (e) => {
+            e.preventDefault();
+            try {
+                const networks = await CloudPersistence.listNetworks();
+                if (!networks || networks.length === 0) {
+                    alert('Nenhuma rede salva na nuvem.');
+                    return;
+                }
+                const list = networks.map((n, i) => `${i}: ${n.name || '(sem nome)'} (${n._id})`).join('\n');
+                const index = prompt('Redes salvas na nuvem:\n' + list + '\n\nDigite o número (0-based) para abrir:');
+                if (index === null) return;
+                const idx = parseInt(index, 10);
+                if (isNaN(idx) || idx < 0 || idx >= networks.length) {
+                    alert('Índice inválido.');
+                    return;
+                }
+                const network = await CloudPersistence.getNetwork(networks[idx]._id);
+                TechProtParser.parse(network.xml, model);
+                app.cloudId = networks[idx]._id;
+                app.openedFileName = `cloud:${app.cloudId}`;
+                canvas.fitToScreen();
+                app.showNotification(`Projeto "${model.name}" carregado da nuvem!`);
+            } catch (err) {
+                alert('Erro ao abrir da nuvem: ' + (err.message || err));
+            }
+        });
+
+        // Salvar na Nuvem (Cloud Persistence)
+        this.nav.querySelector('#menuCloudSave').addEventListener('click', async (e) => {
+            e.preventDefault();
+            try {
+                const xml = TechProtSerializer.serialize(model);
+                let name = model.name || '';
+                let id = app.cloudId || null;
+                if (!id) {
+                    name = prompt('Nome do projeto para salvar na nuvem:', name);
+                    if (name === null) return;
+                    if (!name.trim()) { alert('Nome é obrigatório.'); return; }
+                }
+                const result = await CloudPersistence.saveNetwork({ id, name: name.trim(), xml });
+                app.cloudId = result;
+                app.openedFileName = `cloud:${result}`;
+                app.showNotification(`Projeto "${name}" salvo na nuvem!`);
+            } catch (err) {
+                alert('Erro ao salvar na nuvem: ' + (err.message || err));
+            }
+        });
+
+        // Excluir da Nuvem (Cloud Persistence)
+        this.nav.querySelector('#menuCloudDelete').addEventListener('click', async (e) => {
+            e.preventDefault();
+            try {
+                let id = app.cloudId;
+                if (!id) {
+                    const input = prompt('Digite o ID do projeto para excluir da nuvem:');
+                    if (!input) return;
+                    id = input.trim();
+                }
+                if (!confirm('Tem certeza que deseja excluir este projeto da nuvem?')) return;
+                await CloudPersistence.deleteNetwork(id);
+                if (app.cloudId === id) {
+                    app.cloudId = null;
+                    app.openedFileName = null;
+                }
+                app.showNotification('Projeto excluído da nuvem com sucesso!');
+            } catch (err) {
+                alert('Erro ao excluir da nuvem: ' + (err.message || err));
+            }
         });
 
         // Salvar .tp — reutiliza o nome original quando disponível

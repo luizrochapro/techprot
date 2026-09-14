@@ -5,7 +5,12 @@
   "type": "module",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "dev": "npx convex dev",
+    "prod": "npx convex deploy"
+  },
+  "dependencies": {
+    "convex": "^1.45.0"
   },
   "keywords": [
     "power-systems",
