@@ -258,7 +258,7 @@ export class App {
                 <div class="context-item" id="cmAddBusFaultV">🏷️ Adicionar Rótulo Tensão Falta (Vcc)</div>
                 <div class="context-item" id="cmRunFault" style="color: #f59e0b; font-weight: bold;">⚡ Simular Curto-Circuito nesta Barra (Ctrl+Clique)</div>
                 <div class="context-item" id="cmVoltColors">🎨 Cores dos Níveis de Tensão...</div>
-                <div class="context-item" id="cmStabFault">📈 Simulação de Estabilidade (Curto nesta Barra)...</div>
+                <!-- Estabilidade Eletromecânica oculto do frontend (backend intacto) -->
             `;
         } else if (element.type === 'Generator') {
             itemsHtml += `

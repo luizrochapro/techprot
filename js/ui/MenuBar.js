@@ -76,8 +76,8 @@ export class MenuBar {
                         <div class="dropdown-content">
                             <a href="#" id="menuPowerFlow"><span class="menu-icon">⚡</span> <span data-i18n="runPowerFlow">${i18n.t('runPowerFlow')}</span> (F5)</a>
                             <a href="#" id="menuFault"><span class="menu-icon">💥</span> <span data-i18n="runFault">${i18n.t('runFault')}</span></a>
-                            <a href="#" id="menuHarmonics"><span class="menu-icon">〰️</span> <span data-i18n="runHarmonics">${i18n.t('runHarmonics')}</span></a>
-                            <a href="#" id="menuStability"><span class="menu-icon">📈</span> Estabilidade Eletromecânica...</a>
+                            <a href="#" id="menuHarmonics" style="display:none"><span class="menu-icon">〰️</span> <span data-i18n="runHarmonics">${i18n.t('runHarmonics')}</span></a>
+                            <a href="#" id="menuStability" style="display:none"><span class="menu-icon">📈</span> Estabilidade Eletromecânica...</a>
                             <div class="menu-divider"></div>
                             <a href="#" id="menuReport"><span class="menu-icon">📊</span> <span data-i18n="dataReport">${i18n.t('dataReport')}</span></a>
                         </div>
@@ -88,7 +88,7 @@ export class MenuBar {
                         <button class="menu-btn" data-i18n="labels">${i18n.t('labels')}</button>
                         <div class="dropdown-content">
                             <a href="#" id="menuLabelManager"><span class="menu-icon">🏷️</span> <span data-i18n="labelManager">${i18n.t('labelManager')}</span></a>
-                            <a href="#" id="menuUpdateLabels"><span class="menu-icon">🔄</span> Atualizar Rótulos</a>
+                            <a href="#" id="menuUpdateLabels"><span class="menu-icon">🔄</span> Atualizar Variáveis</a>
                         </div>
                     </div>
 
@@ -97,7 +97,7 @@ export class MenuBar {
                         <button class="menu-btn" data-i18n="samples">${i18n.t('samples')}</button>
                         <div class="dropdown-content">
                             <a href="#" id="menuSample14"><span class="menu-icon">⚡</span> <span data-i18n="sampleIEEE14">${i18n.t('sampleIEEE14')}</span></a>
-                            <a href="#" id="menuSample14Stab"><span class="menu-icon">📈</span> IEEE 14 Barras (Estabilidade Transitória)</a>
+                            <a href="#" id="menuSample14Stab" style="display:none"><span class="menu-icon">📈</span> IEEE 14 Barras (Estabilidade Transitória)</a>
                             <a href="#" id="menuSample9"><span class="menu-icon">🎚️</span> <span data-i18n="sampleIEEE9OLTC">${i18n.t('sampleIEEE9OLTC')}</span></a>
                         </div>
                     </div>
@@ -119,7 +119,7 @@ export class MenuBar {
                     <button class="btn btn-icon" id="btnQuickFlowAnim" title="Animar Fluxo de Potência (setas)">
                         ➡️
                     </button>
-                    <button class="btn btn-icon" id="btnQuickStability" title="Estabilidade Eletromecânica">
+                    <button class="btn btn-icon" id="btnQuickStability" title="Estabilidade Eletromecânica" style="display:none">
                         📈
                     </button>
                     <button class="btn btn-icon" id="btnQuickReport" title="Relatórios">
@@ -393,7 +393,7 @@ export class MenuBar {
         this.nav.querySelector('#menuReport').addEventListener('click', showRep);
         this.nav.querySelector('#btnQuickReport').addEventListener('click', showRep);
 
-        // Gerenciador de Rótulos
+        // Gerenciador de Variáveis
         this.nav.querySelector('#menuLabelManager').addEventListener('click', (e) => {
             e.preventDefault();
             LabelManagerDialog.show(model, () => canvas.requestRender());
@@ -403,7 +403,7 @@ export class MenuBar {
             e.preventDefault();
             model.updateAllLabels();
             canvas.requestRender();
-            app.showNotification('Rótulos do diagrama atualizados!');
+            app.showNotification('Variáveis do diagrama atualizadas!');
         });
 
         // Exemplos

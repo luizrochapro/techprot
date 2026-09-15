@@ -180,11 +180,11 @@ export class TabbedToolbar {
                     <!-- Grupo Rótulos e Visualização -->
                     <div class="ribbon-group">
                         <div class="ribbon-group-items">
-                            <button class="ribbon-btn" id="rbnLabelManager" title="Gerenciador Completo de Rótulos do Diagrama (F8)">
+                            <button class="ribbon-btn" id="rbnLabelManager" title="Gerenciador Completo de Variáveis do Diagrama (F8)">
                                 <span class="rbn-icon">🏷️</span>
-                                <span class="rbn-label">Rótulos...</span>
+                                <span class="rbn-label">Variáveis...</span>
                             </button>
-                            <button class="ribbon-btn" id="rbnUpdateLabels" title="Recalcular e Atualizar Todos os TextLabels">
+                            <button class="ribbon-btn" id="rbnUpdateLabels" title="Recalcular e Atualizar Todas as Variáveis">
                                 <span class="rbn-icon">🔄</span>
                                 <span class="rbn-label">Atualizar</span>
                             </button>
@@ -193,7 +193,7 @@ export class TabbedToolbar {
                                 <span class="rbn-label">Cores KV</span>
                             </button>
                         </div>
-                        <span class="ribbon-group-title">Rótulos & Diagrama</span>
+                            <span class="ribbon-group-title">Variáveis & Diagrama</span>
                     </div>
                 </div>
 
@@ -216,11 +216,11 @@ export class TabbedToolbar {
                                     <span class="rbn-hero-sub">Falta & Ramos (F6)</span>
                                 </div>
                             </button>
-                            <button class="ribbon-btn" id="rbnHarmonics" title="Executar Análise de Harmônicos e THD (F7)">
+                            <button class="ribbon-btn" id="rbnHarmonics" title="Executar Análise de Harmônicos e THD (F7)" style="display:none">
                                 <span class="rbn-icon">〰️</span>
                                 <span class="rbn-label">Harmônicos</span>
                             </button>
-                            <button class="ribbon-btn rbn-btn-hero rbn-btn-stability" id="rbnStability" title="Abrir Painel de Estabilidade Eletromecânica com AVR e Gov (F9)">
+                            <button class="ribbon-btn rbn-btn-hero rbn-btn-stability" id="rbnStability" title="Abrir Painel de Estabilidade Eletromecânica com AVR e Gov (F9)" style="display:none">
                                 <span class="rbn-icon-large">📈</span>
                                 <div class="rbn-hero-text">
                                     <span class="rbn-hero-title">Estabilidade</span>
@@ -453,19 +453,19 @@ export class TabbedToolbar {
             canvas.deleteSelected();
         });
 
-        // Gerenciador de Rótulos
+        // Gerenciador de Variáveis
         this.container.querySelector('#rbnLabelManager')?.addEventListener('click', () => {
             LabelManagerDialog.show(model, () => {
                 canvas.requestRender();
-                app.showNotification('Rótulos do diagrama atualizados com sucesso!');
+                app.showNotification('Variáveis do diagrama atualizadas com sucesso!');
             });
         });
 
-        // Atualizar rótulos
+        // Atualizar variáveis
         this.container.querySelector('#rbnUpdateLabels')?.addEventListener('click', () => {
             model.updateAllLabels();
             canvas.requestRender();
-            app.showNotification('Rótulos recalculados!');
+            app.showNotification('Variáveis recalculadas!');
         });
 
         // Cores de níveis de tensão
