@@ -21,15 +21,21 @@ export class MenuBar {
     init() {
         this.nav.innerHTML = `
             <div class="menu-bar-container">
+                <button class="menu-hamburger" id="menuHamburger" aria-label="Abrir menu principal" aria-controls="menuItems" aria-expanded="false">
+                    <span class="hamburger-bar"></span>
+                    <span class="hamburger-bar"></span>
+                    <span class="hamburger-bar"></span>
+                </button>
+                <div class="menu-backdrop" id="menuBackdrop"></div>
                 <div class="brand">
                     <span class="brand-logo">⚡</span>
                     <span class="brand-name">TechProt <span class="brand-badge">Web</span></span>
                 </div>
 
-                <div class="menu-items">
+                <div class="menu-items" id="menuItems" role="menubar">
                     <!-- Arquivo -->
                     <div class="menu-dropdown">
-                        <button class="menu-btn" data-i18n="file">${i18n.t('file')}</button>
+                        <button class="menu-btn" aria-haspopup="true" aria-expanded="false" data-i18n="file">${i18n.t('file')}</button>
                         <div class="dropdown-content">
                             <a href="#" id="menuNew"><span class="menu-icon">📄</span> <span data-i18n="newProject">${i18n.t('newProject')}</span></a>
                             <a href="#" id="menuCloudOpen"><span class="menu-icon">☁️</span> Abrir da Nuvem…</a>
@@ -45,7 +51,7 @@ export class MenuBar {
 
                     <!-- Editar -->
                     <div class="menu-dropdown">
-                        <button class="menu-btn" data-i18n="edit">${i18n.t('edit')}</button>
+                        <button class="menu-btn" aria-haspopup="true" aria-expanded="false" data-i18n="edit">${i18n.t('edit')}</button>
                         <div class="dropdown-content">
                             <a href="#" id="menuAlignGrid"><span class="menu-icon">📐</span> <span data-i18n="alignGrid">${i18n.t('alignGrid')}</span></a>
                             <a href="#" id="menuDelete"><span class="menu-icon">🗑️</span> <span data-i18n="dialogs.delete">${i18n.t('dialogs.delete')}</span></a>
@@ -56,7 +62,7 @@ export class MenuBar {
 
                     <!-- Exibir -->
                     <div class="menu-dropdown">
-                        <button class="menu-btn" data-i18n="view">${i18n.t('view')}</button>
+                        <button class="menu-btn" aria-haspopup="true" aria-expanded="false" data-i18n="view">${i18n.t('view')}</button>
                         <div class="dropdown-content">
                             <a href="#" id="menuToggleGrid"><span class="menu-icon">▦</span> <span data-i18n="showGrid">${i18n.t('showGrid')}</span> ✓</a>
                             <a href="#" id="menuToggleToolbar"><span class="menu-icon">🎛️</span> <span data-i18n="floatingToolbar">${i18n.t('floatingToolbar')}</span> ✓</a>
@@ -72,7 +78,7 @@ export class MenuBar {
 
                     <!-- Simulação -->
                     <div class="menu-dropdown">
-                        <button class="menu-btn" data-i18n="simulation">${i18n.t('simulation')}</button>
+                        <button class="menu-btn" aria-haspopup="true" aria-expanded="false" data-i18n="simulation">${i18n.t('simulation')}</button>
                         <div class="dropdown-content">
                             <a href="#" id="menuPowerFlow"><span class="menu-icon">⚡</span> <span data-i18n="runPowerFlow">${i18n.t('runPowerFlow')}</span> (F5)</a>
                             <a href="#" id="menuFault"><span class="menu-icon">💥</span> <span data-i18n="runFault">${i18n.t('runFault')}</span></a>
@@ -85,7 +91,7 @@ export class MenuBar {
 
                     <!-- Rótulos -->
                     <div class="menu-dropdown">
-                        <button class="menu-btn" data-i18n="labels">${i18n.t('labels')}</button>
+                        <button class="menu-btn" aria-haspopup="true" aria-expanded="false" data-i18n="labels">${i18n.t('labels')}</button>
                         <div class="dropdown-content">
                             <a href="#" id="menuLabelManager"><span class="menu-icon">🏷️</span> <span data-i18n="labelManager">${i18n.t('labelManager')}</span></a>
                             <a href="#" id="menuUpdateLabels"><span class="menu-icon">🔄</span> Atualizar Variáveis</a>
@@ -94,7 +100,7 @@ export class MenuBar {
 
                     <!-- Exemplos -->
                     <div class="menu-dropdown">
-                        <button class="menu-btn" data-i18n="samples">${i18n.t('samples')}</button>
+                        <button class="menu-btn" aria-haspopup="true" aria-expanded="false" data-i18n="samples">${i18n.t('samples')}</button>
                         <div class="dropdown-content">
                             <a href="#" id="menuSample14"><span class="menu-icon">⚡</span> <span data-i18n="sampleIEEE14">${i18n.t('sampleIEEE14')}</span></a>
                             <a href="#" id="menuSample14Stab" style="display:none"><span class="menu-icon">📈</span> IEEE 14 Barras (Estabilidade Transitória)</a>
@@ -104,7 +110,7 @@ export class MenuBar {
 
                     <!-- Ajuda -->
                     <div class="menu-dropdown">
-                        <button class="menu-btn" data-i18n="help">${i18n.t('help')}</button>
+                        <button class="menu-btn" aria-haspopup="true" aria-expanded="false" data-i18n="help">${i18n.t('help')}</button>
                         <div class="dropdown-content">
                             <a href="#" id="menuAbout"><span class="menu-icon">ℹ️</span> Sobre o TechProt Web</a>
                         </div>
@@ -132,7 +138,103 @@ export class MenuBar {
             </div>
         `;
 
+        this.setupMenuInteractions();
         this.bindEvents();
+    }
+
+    setupMenuInteractions() {
+        const hamburger = this.nav.querySelector('#menuHamburger');
+        const backdrop = this.nav.querySelector('#menuBackdrop');
+        const menuItems = this.nav.querySelector('#menuItems');
+        const dropdowns = Array.from(this.nav.querySelectorAll('.menu-dropdown'));
+
+        const closeAllDropdowns = () => {
+            dropdowns.forEach(dd => {
+                dd.classList.remove('open');
+                const btn = dd.querySelector('.menu-btn');
+                if (btn) btn.setAttribute('aria-expanded', 'false');
+            });
+        };
+
+        const closeMobileMenu = () => {
+            menuItems.classList.remove('mobile-open');
+            backdrop.classList.remove('visible');
+            hamburger.setAttribute('aria-expanded', 'false');
+        };
+
+        const toggleMobileMenu = () => {
+            const open = !menuItems.classList.contains('mobile-open');
+            menuItems.classList.toggle('mobile-open', open);
+            backdrop.classList.toggle('visible', open);
+            hamburger.setAttribute('aria-expanded', open ? 'true' : 'false');
+            if (!open) closeAllDropdowns();
+        };
+
+        hamburger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleMobileMenu();
+        });
+        backdrop.addEventListener('pointerdown', closeMobileMenu);
+
+        // Abrir/fechar dropdowns por clique/toque (não depende de :hover)
+        dropdowns.forEach(dd => {
+            const btn = dd.querySelector('.menu-btn');
+            if (!btn) return;
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const wasOpen = dd.classList.contains('open');
+                closeAllDropdowns();
+                if (!wasOpen) {
+                    dd.classList.add('open');
+                    btn.setAttribute('aria-expanded', 'true');
+                }
+            });
+        });
+
+        // Fechar dropdowns/menu ao tocar fora da barra
+        document.addEventListener('pointerdown', (e) => {
+            if (!this.nav.contains(e.target)) {
+                closeAllDropdowns();
+                closeMobileMenu();
+            }
+        });
+
+        // Fechar com Esc
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeAllDropdowns();
+                closeMobileMenu();
+            }
+        });
+
+        // Após acionar item de menu, fecha dropdown e gaveta mobile
+        this.nav.addEventListener('click', (e) => {
+            const item = e.target.closest('.dropdown-content a, .dropdown-content .dropdown-file-label');
+            if (item) {
+                closeAllDropdowns();
+                closeMobileMenu();
+            }
+        });
+
+        // Sincroniza modo mobile/desktop ao redimensionar (debounced).
+        // Deve casar com o breakpoint CSS: @media (max-width: 1024px).
+        const MOBILE_BP = 1024;
+        let lastIsMobile = window.innerWidth <= MOBILE_BP;
+        let resizeTimer = null;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => {
+                const isMobile = window.innerWidth <= MOBILE_BP;
+                if (isMobile !== lastIsMobile) {
+                    // Cruzou o breakpoint: fecha gaveta e dropdowns e
+                    // ressincroniza aria-expanded (backdrop sai junto).
+                    closeAllDropdowns();
+                    closeMobileMenu();
+                    lastIsMobile = isMobile;
+                }
+            }, 150);
+        });
     }
 
     bindEvents() {

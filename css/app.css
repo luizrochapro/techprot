@@ -47,6 +47,7 @@ body {
     color: var(--text-primary);
     overflow: hidden;
     height: 100vh;
+    height: 100dvh;
     display: flex;
     flex-direction: column;
 }
@@ -56,6 +57,8 @@ body {
     background-color: var(--bg-secondary);
     border-bottom: 1px solid var(--border-color);
     height: 44px;
+    max-width: 100vw;
+    overflow: hidden;
     z-index: 100;
     user-select: none;
 }
@@ -64,6 +67,8 @@ body {
     display: flex;
     align-items: center;
     height: 100%;
+    max-width: 100%;
+    overflow: hidden;
     padding: 0 12px;
     gap: 8px;
 }
@@ -96,6 +101,7 @@ body {
     display: flex;
     align-items: center;
     gap: 2px;
+    min-width: 0;
 }
 
 .menu-dropdown {
@@ -132,8 +138,47 @@ body {
     z-index: 200;
 }
 
-.menu-dropdown:hover .dropdown-content {
+/* Abertura por clique/toque (classe .open controlada pelo MenuBar.js) */
+.menu-dropdown.open .dropdown-content {
     display: block;
+}
+
+/* Hover como conveniência adicional apenas em desktop (mouse) */
+@media (hover: hover) and (pointer: fine) {
+    .menu-dropdown:hover .dropdown-content {
+        display: block;
+    }
+}
+
+/* Hamburger (visível apenas em telas pequenas) */
+.menu-hamburger {
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 5px;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 8px;
+    background: none;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.menu-hamburger:active {
+    background: var(--bg-tertiary);
+}
+
+.hamburger-bar {
+    width: 22px;
+    height: 2px;
+    background: var(--text-primary);
+    border-radius: 2px;
+}
+
+.menu-backdrop {
+    display: none;
 }
 
 .dropdown-content a,
@@ -165,6 +210,125 @@ body {
     font-size: 14px;
     width: 18px;
     text-align: center;
+}
+
+/* ============================================================
+   Menu responsivo — mobile-first
+   xs (<=480px), sm (481-768px) e md (769-1024px): colapsa em
+   hamburger + gaveta lateral. A faixa md evita overflow da
+   .main-nav (44px fixos, sem overflow) causado pela soma de
+   brand + 7 menus dropdown + quick-actions (~900-950px).
+   ============================================================ */
+
+/* sm+md: ate 1024px — gaveta lateral com todos os menus */
+@media (max-width: 1024px) {
+    .main-nav {
+        height: 48px;
+    }
+
+    .menu-bar-container {
+        padding: 0 8px;
+        gap: 4px;
+    }
+
+    .menu-hamburger {
+        display: inline-flex;
+    }
+
+    .menu-backdrop.visible {
+        display: block;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 250;
+    }
+
+    .menu-items {
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        height: 100dvh;
+        width: min(80vw, 20rem);
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0;
+        background: var(--bg-secondary);
+        border-right: 1px solid var(--border-color);
+        box-shadow: var(--shadow);
+        padding: calc(8px + env(safe-area-inset-top, 0px)) 8px calc(8px + env(safe-area-inset-bottom, 0px));
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        transform: translateX(-110%);
+        transition: transform 0.2s ease;
+        z-index: 300;
+    }
+
+    .menu-items.mobile-open {
+        transform: translateX(0);
+    }
+
+    .menu-dropdown {
+        display: block;
+        width: 100%;
+    }
+
+    .menu-btn {
+        width: 100%;
+        min-height: 44px;
+        padding: 10px 14px;
+        font-size: 15px;
+        text-align: left;
+    }
+
+    /* Submenus expandem inline dentro da gaveta */
+    .dropdown-content {
+        position: static;
+        min-width: 0;
+        box-shadow: none;
+        border: none;
+        border-left: 2px solid var(--border-color);
+        border-radius: 0;
+        margin-left: 14px;
+        padding: 2px 0;
+    }
+
+    .dropdown-content a,
+    .dropdown-file-label {
+        min-height: 44px;
+        padding: 10px 16px;
+        font-size: 15px;
+    }
+
+    /* Quick actions: alvos de toque >= 44px */
+    .quick-actions {
+        gap: 8px;
+    }
+
+    .quick-actions .btn {
+        min-height: 44px;
+        min-width: 44px;
+        justify-content: center;
+    }
+
+    /* Botao principal: esconde o texto, mantem icone */
+    #btnQuickPF span {
+        display: none;
+    }
+}
+
+/* xs: <= 480px — esconde botoes secundarios e o nome da marca */
+@media (max-width: 480px) {
+    .brand-name {
+        display: none;
+    }
+
+    #btnQuickFlowAnim,
+    #btnQuickReport,
+    #btnQuickAlign,
+    #btnQuickStability {
+        display: none;
+    }
 }
 
 /* Quick Actions in Navbar */
@@ -524,6 +688,220 @@ body {
     background: rgba(56, 189, 248, 0.28);
     border-color: #38bdf8;
     box-shadow: 0 0 10px rgba(56, 189, 248, 0.3);
+}
+
+/* ============================================================
+   Ribbon responsivo — TabbedToolbar (mobile-first)
+   <=768px: tabs roláveis + corpo em carrossel com snap
+   <=480px: refinamentos (badge compacto, grupos largos)
+   Desktop >=1025px permanece idêntico (sem snap forçado).
+   ============================================================ */
+
+/* sm: 481-768px + xs: <=480px — comportamento base mobile do ribbon */
+@media (max-width: 768px) {
+    /* Barra de abas: carrossel horizontal, sem quebra, 44px de alvo */
+    .ribbon-tabs-bar {
+        height: 44px;
+        min-height: 44px;
+        padding-left: max(8px, env(safe-area-inset-left, 0px));
+        padding-right: max(8px, env(safe-area-inset-right, 0px));
+        gap: 8px;
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+        scroll-snap-type: x proximity;
+        flex-wrap: nowrap;
+        justify-content: flex-start;
+    }
+
+    .ribbon-tabs-bar::-webkit-scrollbar {
+        display: none;
+    }
+
+    .ribbon-tabs-list {
+        flex: 0 0 auto;
+        flex-wrap: nowrap;
+        gap: 6px;
+        height: 100%;
+        overflow: visible;
+    }
+
+    .ribbon-tab-btn {
+        flex: 0 0 auto;
+        min-height: 44px;
+        height: 44px;
+        min-width: max-content;
+        padding: 0 16px;
+        font-size: 13px;
+        white-space: nowrap;
+        border-bottom-width: 3px;
+    }
+
+    .ribbon-tab-btn:active {
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
+    }
+
+    .ribbon-tabs-right {
+        flex: 0 0 auto;
+        gap: 8px;
+        padding-left: 8px;
+        margin-left: auto;
+    }
+
+    .ribbon-system-badge {
+        white-space: nowrap;
+        font-size: 10px;
+        padding: 3px 8px;
+        flex: 0 0 auto;
+    }
+
+    .ribbon-collapse-toggle {
+        min-width: 44px;
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        padding: 0 8px;
+        flex: 0 0 auto;
+        border-radius: 6px;
+    }
+
+    .ribbon-collapse-toggle:active {
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
+    }
+
+    /* Corpo do ribbon: carrossel com snap por grupo + pista visual */
+    .ribbon-content-body {
+        min-height: 88px;
+        max-height: none;
+        height: auto;
+        padding: 6px max(10px, env(safe-area-inset-right, 0px)) 8px max(10px, env(safe-area-inset-left, 0px));
+        gap: 10px;
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+        scroll-snap-type: x mandatory;
+        scroll-padding-left: max(10px, env(safe-area-inset-left, 0px));
+        scroll-padding-right: max(10px, env(safe-area-inset-right, 0px));
+        /* fade sutil na borda direita indicando mais conteúdo — puro CSS */
+        -webkit-mask-image: linear-gradient(to right, black calc(100% - 28px), transparent 100%);
+        mask-image: linear-gradient(to right, black calc(100% - 28px), transparent 100%);
+    }
+
+    .ribbon-content-body::-webkit-scrollbar {
+        display: none;
+    }
+
+    .ribbon-pane {
+        gap: 10px;
+        height: auto;
+        align-items: stretch;
+        flex: 0 0 auto;
+    }
+
+    .ribbon-group {
+        scroll-snap-align: start;
+        flex: 0 0 auto;
+        padding: 4px 10px;
+        gap: 4px;
+        min-width: max-content;
+    }
+
+    .ribbon-group-items {
+        gap: 8px;
+        flex-wrap: nowrap;
+    }
+
+    .ribbon-btn {
+        min-width: 44px;
+        min-height: 44px;
+        height: 48px;
+        gap: 4px;
+    }
+
+    .ribbon-btn:active {
+        transform: scale(0.97);
+        filter: brightness(1.06);
+        background: var(--bg-tertiary);
+        border-color: var(--border-color);
+    }
+
+    /* Hero buttons: compactos em mobile, mantendo legibilidade */
+    .rbn-btn-hero {
+        min-width: 108px;
+        padding: 6px 10px;
+        gap: 8px;
+    }
+
+    .rbn-hero-title {
+        font-size: 11px;
+    }
+
+    .rbn-hero-sub {
+        font-size: 8.5px;
+    }
+}
+
+/* xs: <=480px — refinamentos: badge compacto e grupo largo com snap confortável */
+@media (max-width: 480px) {
+    .ribbon-tabs-bar {
+        gap: 6px;
+    }
+
+    .ribbon-tab-btn {
+        padding: 0 12px;
+        font-size: 12.5px;
+    }
+
+    /* Badge não pode competir com o toggle: encolhe com ellipsis */
+    .ribbon-system-badge {
+        max-width: 96px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-size: 9.5px;
+        padding: 3px 7px;
+    }
+
+    .ribbon-content-body {
+        padding-top: 6px;
+        padding-bottom: 6px;
+        /* fade ligeiramente mais pronunciado em telas muito estreitas */
+        -webkit-mask-image: linear-gradient(to right, black calc(100% - 22px), transparent 100%);
+        mask-image: linear-gradient(to right, black calc(100% - 22px), transparent 100%);
+    }
+
+    /* Grupo com muitos botões (Inserir Elementos da Rede) ganha largura de carrossel */
+    .ribbon-group-elements {
+        min-width: min(85vw, 340px);
+        max-width: min(85vw, 340px);
+    }
+
+    .ribbon-group-elements .ribbon-group-items {
+        flex-wrap: nowrap;
+        overflow-x: visible;
+        gap: 6px;
+    }
+
+    /* Outros grupos mantêm max-content mas com limite para não exigir zoom */
+    .ribbon-group {
+        max-width: min(88vw, 360px);
+    }
+
+    .rbn-btn-hero {
+        min-width: 96px;
+        padding: 6px 8px;
+    }
+
+    .rbn-hero-title {
+        font-size: 10.5px;
+    }
 }
 
 /* CAD Canvas Container */
