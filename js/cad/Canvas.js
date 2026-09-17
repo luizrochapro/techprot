@@ -37,6 +37,10 @@ export class Canvas {
         this.dragStart = { x: 0, y: 0 };
         this.selectionBox = { x1: 0, y1: 0, x2: 0, y2: 0 };
 
+        // Touch drag delay: não iniciar arraste até o dedo se mover além do limiar (8px)
+        // Impede que o primeiro toque mova o elemento antes do double-tap
+        this._dragPending = null; // { startSX, startSY, items: [{el, dx, dy}] }
+
         // Wiring state
         this.wiringStartBus = null;
         this.wiringCurrentPoint = null;
@@ -123,6 +127,10 @@ export class Canvas {
         // Pointer Events unificam mouse/touch/pen — corrige arraste no celular (t-touch-1)
         this._activePointers = new Map();
         this._pinch = null;
+        // Double-tap manual para touch (sem depender de dblclick nativo)
+        this._lastTap = 0;
+        this._lastTapPos = null;
+        this._tapDownPos = null;
 
         el.addEventListener('pointerdown', (e) => this.onPointerDown(e), { passive: false });
         window.addEventListener('pointermove', (e) => this.onPointerMove(e), { passive: false });
@@ -162,6 +170,15 @@ export class Canvas {
         try { this.canvas.setPointerCapture(e.pointerId); } catch (_) {}
 
         const count = this._activePointers.size;
+        // Double-tap: segundo dedo cancela sequência de taps (gesto multi-toque não é tap)
+        if (isTouch && count > 1) {
+            this._lastTap = 0;
+            this._lastTapPos = null;
+        }
+        if (isTouch && count === 1) {
+            // Guarda posição do down para distinguir tap de arraste/pan
+            this._tapDownPos = { x: e.clientX, y: e.clientY };
+        }
         if (isTouch && count === 2) {
             const pinchNow = this._getPinchState();
             if (pinchNow) {
@@ -261,8 +278,13 @@ export class Canvas {
                 this.selectedElements = [hit];
                 hit.selected = true;
             }
-            this.isDragging = true;
-            this.dragStart = { x: worldPos.x, y: worldPos.y };
+            if (isTouch) {
+                // Touch: adiar drag até dedo mover além do limiar (8px screen)
+                this._dragPending = { startSX: sx, startSY: sy };
+            } else {
+                this.isDragging = true;
+                this.dragStart = { x: worldPos.x, y: worldPos.y };
+            }
             if (isTouch) e.preventDefault();
             this.requestRender();
             return;
@@ -280,8 +302,13 @@ export class Canvas {
                     hit.selected = true;
                 }
             }
-            this.isDragging = true;
-            this.dragStart = { x: worldPos.x, y: worldPos.y };
+            if (isTouch) {
+                // Touch: adiar drag até dedo mover além do limiar
+                this._dragPending = { startSX: sx, startSY: sy };
+            } else {
+                this.isDragging = true;
+                this.dragStart = { x: worldPos.x, y: worldPos.y };
+            }
             if (isTouch) e.preventDefault();
         } else {
             if (isTouch) {
@@ -342,7 +369,7 @@ export class Canvas {
             return;
         }
 
-        const needsPrevent = this.isDragging || this.isPanning || this.isResizing || this.isSelectingBox || this._pinch;
+        const needsPrevent = this.isDragging || this.isPanning || this.isResizing || this.isSelectingBox || this._pinch || this._dragPending;
         if (isTouch && needsPrevent) e.preventDefault();
 
         if (!this._activePointers.has(e.pointerId) && isTouch && count === 0) return;
@@ -381,6 +408,21 @@ export class Canvas {
             this.updateBusConnections(bus);
             this.requestRender();
             return;
+        }
+        // Touch drag delay: promover _dragPending → isDragging quando dedo se move além do limiar (8px screen)
+        if (this._dragPending && isTouch) {
+            const dp = this._dragPending;
+            const moveDx = sx - dp.startSX;
+            const moveDy = sy - dp.startSY;
+            if (Math.hypot(moveDx, moveDy) > 8) {
+                // Dedo se-moveu além do limiar → iniciar drag real
+                this._dragPending = null;
+                this.isDragging = true;
+                this.dragStart = { x: worldPos.x, y: worldPos.y };
+                this.canvas.style.cursor = 'grabbing';
+                e.preventDefault();
+            }
+            // Ainda dentro do limiar — não fazer nada (tap aguardando第二个toque)
         }
         if (this.isDragging) {
             const dx = worldPos.x - this.dragStart.x;
@@ -503,6 +545,7 @@ export class Canvas {
 
     onPointerUp(e) {
         const wasTouch = e.pointerType === 'touch';
+        const wasPinch = !!this._pinch;
         this._activePointers.delete(e.pointerId);
         try { this.canvas.releasePointerCapture(e.pointerId); } catch (_) {}
         if (wasTouch && this._activePointers.size >= 2) {
@@ -511,9 +554,18 @@ export class Canvas {
             return;
         }
         if (wasTouch && this._pinch && this._activePointers.size < 2) this._pinch = null;
+        // Se terminou um gesto de pinch, descarta sequência de tap e não avalia double-tap
+        const endedPinch = wasTouch && wasPinch;
+        if (endedPinch) {
+            this._lastTap = 0;
+            this._lastTapPos = null;
+            this._tapDownPos = null;
+        }
         if (this.isPanning) { this.isPanning = false; this.canvas.style.cursor = 'default'; }
         if (this.isResizing) { this.isResizing = false; this.resizeTarget = null; this.resizeHandle = null; this.canvas.style.cursor = 'default'; this.requestRender(); }
         if (this.isDragging) this._endDragAndSnap();
+        // Touch: dedo levantou sem mover além do limiar → era um tap, não drag
+        if (wasTouch && this._dragPending) { this._dragPending = null; }
         if (this.isSelectingBox) {
             this.isSelectingBox = false;
             this.isResizing = false;
@@ -524,6 +576,44 @@ export class Canvas {
             const all = [...this.model.getAllElements(), ...this.model.textLabels];
             for (const item of all) if (item.intersectsBox(minX, minY, maxX, maxY)) if (!this.selectedElements.includes(item)) { this.selectedElements.push(item); item.selected = true; }
             this.requestRender();
+        }
+
+        // ——— Detecção manual de double-tap para touch (sem depender de dblclick nativo) ———
+        if (wasTouch && !endedPinch && this._activePointers.size === 0 && this.activeTool === 'select' && this._tapDownPos) {
+            const TAP_MOVE_MAX = 15; // px: movimento máximo dentro de um tap (ampliado para touch)
+            const DOUBLE_TAP_DIST = 30; // px: distância máxima entre dois taps
+            const DOUBLE_TAP_TIME = 500; // ms (ampliado para dedos mais lentos)
+            const dxMove = e.clientX - this._tapDownPos.x;
+            const dyMove = e.clientY - this._tapDownPos.y;
+            const moveDist = Math.hypot(dxMove, dyMove);
+            const isTap = moveDist <= TAP_MOVE_MAX;
+            if (isTap) {
+                const now = Date.now();
+                if (this._lastTapPos) {
+                    const dxTap = e.clientX - this._lastTapPos.x;
+                    const dyTap = e.clientY - this._lastTapPos.y;
+                    const tapDist = Math.hypot(dxTap, dyTap);
+                    const dt = now - this._lastTap;
+                    if (tapDist < DOUBLE_TAP_DIST && dt < DOUBLE_TAP_TIME) {
+                        // Double-tap detectado → dispara mesma ação do dblclick nativo
+                        this._lastTap = 0;
+                        this._lastTapPos = null;
+                        this._tapDownPos = null;
+                        this.onDoubleClick({ clientX: e.clientX, clientY: e.clientY });
+                        return;
+                    }
+                }
+                this._lastTap = now;
+                this._lastTapPos = { x: e.clientX, y: e.clientY };
+            } else {
+                // Movimento grande (pan/drag/box) quebra sequência de double-tap
+                this._lastTap = 0;
+                this._lastTapPos = null;
+            }
+            this._tapDownPos = null;
+        } else if (wasTouch && this._activePointers.size === 0) {
+            // Levantou dedo mas não foi tap válido (ex: pinch, pan longo) → limpa referência de down
+            this._tapDownPos = null;
         }
     }
 
