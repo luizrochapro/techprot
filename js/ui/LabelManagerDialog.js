@@ -1,258 +1,282 @@
 import { i18n } from './i18n.js';
 import { TextLabel, LabelDataType } from '../elements/TextLabel.js';
 
+/**
+ * LabelManagerDialog — Redesign moderno (2026)
+ * Gerenciador de rótulos/variáveis do diagrama unifilar.
+ *
+ * Melhorias de UX/UI:
+ *  - Card moderno (radius generoso, sombra suave, transições).
+ *  - Busca instantânea filtrando variáveis por nome, agrupadas por elemento.
+ *  - Seções colapsáveis por tipo de elemento, com contadores de ativas.
+ *  - Checkboxes customizados com foco acessível e hover states.
+ *  - Preview em tempo real com visual de "chip" por seção.
+ *  - Mobile-first: fullscreen em <= 640px, touch targets >= 44px.
+ *
+ * Funcionalidade preservada: mesmos IDs de checkbox, precisão decimal,
+ * limpeza de rótulos existentes e sincronização com model.textLabels.
+ */
 export class LabelManagerDialog {
+
+    /** Definição declarativa das variáveis por grupo de elemento. */
+    static get GROUPS() {
+        return [
+            {
+                id: 'bus', title: 'Barras', icon: '▮',
+                items: [
+                    { id: 'chkBusName',  label: 'Nome da Barra',            sample: 'Barra 1' },
+                    { id: 'chkBusV',     label: 'Tensão (V)',               sample: '1.060 p.u.' },
+                    { id: 'chkBusAngle', label: 'Ângulo (θ)',               sample: '0.000°' },
+                    { id: 'chkBusFault', label: 'Curto-circuito (Icc)',     sample: 'Icc = 12.450 kA', accent: 'warn' },
+                    { id: 'chkBusFaultV',label: 'Tensão pós-falta (Vcc)',   sample: 'Vcc = 0.000 p.u.', accent: 'warn' },
+                ]
+            },
+            {
+                id: 'line', title: 'Linhas', icon: '⟿',
+                items: [
+                    { id: 'chkLineName', label: 'Nome da Linha',            sample: 'L 1-2' },
+                    { id: 'chkLineP',    label: 'Potência ativa (P)',       sample: 'P = 32.100 MW' },
+                    { id: 'chkLineQ',    label: 'Potência reativa (Q)',     sample: 'Q = 14.500 Mvar' },
+                    { id: 'chkLineLoss', label: 'Perdas',                   sample: 'Perdas = 0.420 MW' },
+                    { id: 'chkLineI',    label: 'Corrente',                 sample: '134.5 A' },
+                    { id: 'chkLineFault',label: 'Contribuição de Falta (Icc ramo)', sample: 'Icc = 6.280 kA', accent: 'warn' },
+                ]
+            },
+            {
+                id: 'transf', title: 'Transformadores', icon: '⌘',
+                items: [
+                    { id: 'chkTransfName', label: 'Nome do Trafo',          sample: 'T 1-2' },
+                    { id: 'chkTransfTap',  label: 'Tap (Fixo / OLTC)',      sample: 'Tap = 0.978 p.u.', accent: 'warn' },
+                    { id: 'chkTransfP',    label: 'Potência ativa (P)',     sample: 'P = 45.200 MW' },
+                    { id: 'chkTransfQ',    label: 'Potência reativa (Q)',   sample: '' },
+                    { id: 'chkTransfLoss', label: 'Perdas',                 sample: 'Perdas = 0.350 MW' },
+                    { id: 'chkTransfFault',label: 'Contribuição de Falta (Icc trafo)', sample: 'Icc = 4.120 kA', accent: 'warn' },
+                ]
+            },
+            {
+                id: 'gen', title: 'Geradores', icon: '⚡',
+                items: [
+                    { id: 'chkGenName', label: 'Nome do Gerador',   sample: 'Gen 1' },
+                    { id: 'chkGenP',    label: 'Potência ativa (P)', sample: 'P = 100.000 MW' },
+                    { id: 'chkGenQ',    label: 'Potência reativa (Q)', sample: 'Q = 25.000 Mvar' },
+                ]
+            },
+            {
+                id: 'load', title: 'Cargas', icon: '⤓',
+                items: [
+                    { id: 'chkLoadName', label: 'Nome da Carga',     sample: 'Load 1' },
+                    { id: 'chkLoadP',    label: 'Potência ativa (P)', sample: 'P = 30.000 MW' },
+                    { id: 'chkLoadQ',    label: 'Potência reativa (Q)', sample: 'Q = 15.000 Mvar' },
+                ]
+            },
+            {
+                id: 'relay', title: 'Relés de Proteção', icon: '🛡',
+                items: [
+                    { id: 'chkRelayTime', label: 'Tempo de Operação',        sample: 'Tempo = INST / 1.234s', accent: 'danger' },
+                    { id: 'chkRelayI',    label: 'Corrente de Sensibilização', sample: 'I sensibilização = 1.234 kA', accent: 'danger' },
+                ]
+            },
+        ];
+    }
+
     static show(model, onApply) {
         const existing = document.getElementById('labelManagerModal');
         if (existing) existing.remove();
 
         const modal = document.createElement('div');
         modal.id = 'labelManagerModal';
-        modal.className = 'modal-backdrop';
+        modal.className = 'modal-backdrop lm-backdrop';
 
         // Detect currently active labels in the model
         const hasType = (elements, dataType) => {
-            return elements.length > 0 && elements.some(el => 
+            return elements.length > 0 && elements.some(el =>
                 model.textLabels.some(l => l.parentElement === el && l.dataType === dataType)
             );
         };
 
-        const busNameChecked = hasType(model.buses, LabelDataType.DATA_NAME);
-        const busVChecked = hasType(model.buses, LabelDataType.DATA_VOLTAGE);
-        const busAngleChecked = hasType(model.buses, LabelDataType.DATA_ANGLE);
-        const busFaultChecked = hasType(model.buses, LabelDataType.DATA_SC_CURRENT);
-        const busFaultVChecked = hasType(model.buses, LabelDataType.DATA_SC_VOLTAGE);
+        const checkedState = {
+            chkBusName:  hasType(model.buses, LabelDataType.DATA_NAME),
+            chkBusV:     hasType(model.buses, LabelDataType.DATA_VOLTAGE),
+            chkBusAngle: hasType(model.buses, LabelDataType.DATA_ANGLE),
+            chkBusFault: hasType(model.buses, LabelDataType.DATA_SC_CURRENT),
+            chkBusFaultV: hasType(model.buses, LabelDataType.DATA_SC_VOLTAGE),
 
-        const lineNameChecked = hasType(model.lines, LabelDataType.DATA_NAME);
-        const linePChecked = hasType(model.lines, LabelDataType.DATA_PF_ACTIVE);
-        const lineQChecked = hasType(model.lines, LabelDataType.DATA_PF_REACTIVE);
-        const lineLossChecked = hasType(model.lines, LabelDataType.DATA_PF_LOSSES);
-        const lineIChecked = hasType(model.lines, LabelDataType.DATA_PF_CURRENT);
-        const lineFaultChecked = hasType(model.lines, LabelDataType.DATA_SC_CURRENT);
+            chkLineName: hasType(model.lines, LabelDataType.DATA_NAME),
+            chkLineP:    hasType(model.lines, LabelDataType.DATA_PF_ACTIVE),
+            chkLineQ:    hasType(model.lines, LabelDataType.DATA_PF_REACTIVE),
+            chkLineLoss: hasType(model.lines, LabelDataType.DATA_PF_LOSSES),
+            chkLineI:    hasType(model.lines, LabelDataType.DATA_PF_CURRENT),
+            chkLineFault: hasType(model.lines, LabelDataType.DATA_SC_CURRENT),
 
-        const transfNameChecked = hasType(model.transformers, LabelDataType.DATA_NAME);
-        const transfTapChecked = hasType(model.transformers, LabelDataType.DATA_TRANSFORMER_TAP);
-        const transfPChecked = hasType(model.transformers, LabelDataType.DATA_PF_ACTIVE);
-        const transfQChecked = hasType(model.transformers, LabelDataType.DATA_PF_REACTIVE);
-        const transfLossChecked = hasType(model.transformers, LabelDataType.DATA_PF_LOSSES);
-        const transfFaultChecked = hasType(model.transformers, LabelDataType.DATA_SC_CURRENT);
+            chkTransfName: hasType(model.transformers, LabelDataType.DATA_NAME),
+            chkTransfTap:  hasType(model.transformers, LabelDataType.DATA_TRANSFORMER_TAP),
+            chkTransfP:    hasType(model.transformers, LabelDataType.DATA_PF_ACTIVE),
+            chkTransfQ:    hasType(model.transformers, LabelDataType.DATA_PF_REACTIVE),
+            chkTransfLoss: hasType(model.transformers, LabelDataType.DATA_PF_LOSSES),
+            chkTransfFault: hasType(model.transformers, LabelDataType.DATA_SC_CURRENT),
 
-        const genNameChecked = hasType(model.generators, LabelDataType.DATA_NAME);
-        const genPChecked = hasType(model.generators, LabelDataType.DATA_ACTIVE_POWER);
-        const genQChecked = hasType(model.generators, LabelDataType.DATA_REACTIVE_POWER);
+            chkGenName: hasType(model.generators, LabelDataType.DATA_NAME),
+            chkGenP:    hasType(model.generators, LabelDataType.DATA_ACTIVE_POWER),
+            chkGenQ:    hasType(model.generators, LabelDataType.DATA_REACTIVE_POWER),
 
-        const loadNameChecked = hasType(model.loads, LabelDataType.DATA_NAME);
-        const loadPChecked = hasType(model.loads, LabelDataType.DATA_ACTIVE_POWER);
-        const loadQChecked = hasType(model.loads, LabelDataType.DATA_REACTIVE_POWER);
+            chkLoadName: hasType(model.loads, LabelDataType.DATA_NAME),
+            chkLoadP:    hasType(model.loads, LabelDataType.DATA_ACTIVE_POWER),
+            chkLoadQ:    hasType(model.loads, LabelDataType.DATA_REACTIVE_POWER),
 
-        const relayTimeChecked = hasType(model.relays, LabelDataType.DATA_RELAY_TIME);
-        const relayIChecked = hasType(model.relays, LabelDataType.DATA_RELAY_CURRENT);
+            chkRelayTime: hasType(model.relays, LabelDataType.DATA_RELAY_TIME),
+            chkRelayI:    hasType(model.relays, LabelDataType.DATA_RELAY_CURRENT),
+        };
+
+        const norm = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+        // --- Build group sections HTML ---
+        const sectionsHtml = this.GROUPS.map(group => {
+            const rows = group.items.map(item => `
+                <label class="lm-item ${item.accent ? 'lm-item-' + item.accent : ''}"
+                       data-search="${norm(group.title + ' ' + item.label)}"
+                       title="${item.label}">
+                    <input type="checkbox" id="${item.id}" ${checkedState[item.id] ? 'checked' : ''}>
+                    <span class="lm-check" aria-hidden="true"></span>
+                    <span class="lm-item-text">${item.label}</span>
+                </label>
+            `).join('');
+            return `
+                <section class="lm-group" data-group="${group.id}">
+                    <button type="button" class="lm-group-header" data-group-toggle="${group.id}" aria-expanded="true">
+                        <span class="lm-group-icon" aria-hidden="true">${group.icon}</span>
+                        <span class="lm-group-title">${group.title}</span>
+                        <span class="lm-group-count" data-group-count="${group.id}"></span>
+                        <span class="lm-group-chevron" aria-hidden="true">▾</span>
+                    </button>
+                    <div class="lm-group-body" data-group-body="${group.id}">${rows}</div>
+                </section>
+            `;
+        }).join('');
 
         modal.innerHTML = `
-            <div class="modal-card" style="width: 580px; max-width: 95vw;">
-                <div class="modal-header">
-                    <h3>${i18n.t('labelManager')}</h3>
-                    <button class="close-btn" id="modalClose">✕</button>
-                </div>
-                <div class="modal-body" style="display: flex; gap: 16px;">
-                    <!-- Left: Category tabs & Options -->
-                    <div style="flex: 1.2;">
-                        <div class="tab-buttons" id="lmTabs">
-                            <button class="tab-btn active" data-tab="bus">Barra</button>
-                            <button class="tab-btn" data-tab="line">Linha</button>
-                            <button class="tab-btn" data-tab="transf">Trafo</button>
-                            <button class="tab-btn" data-tab="gen">Gerador</button>
-                            <button class="tab-btn" data-tab="load">Carga</button>
-                            <button class="tab-btn" data-tab="relay">Relé</button>
-                        </div>
-                        <div class="tab-content-container" style="border: 1px solid var(--border-color); border-radius: 4px; padding: 10px; height: 190px; overflow-y: auto;">
-                            <!-- Bus items -->
-                            <div class="tab-pane" id="tabBus">
-                                <label class="checkbox-label"><input type="checkbox" id="chkBusName" ${busNameChecked ? 'checked' : ''}> Nome da Barra</label>
-                                <label class="checkbox-label"><input type="checkbox" id="chkBusV" ${busVChecked ? 'checked' : ''}> Tensão (V)</label>
-                                <label class="checkbox-label"><input type="checkbox" id="chkBusAngle" ${busAngleChecked ? 'checked' : ''}> Ângulo (θ)</label>
-                                <label class="checkbox-label font-bold" style="color: #f59e0b;"><input type="checkbox" id="chkBusFault" ${busFaultChecked ? 'checked' : ''}> Curto-circuito (Icc)</label>
-                                <label class="checkbox-label" style="color: #f59e0b;"><input type="checkbox" id="chkBusFaultV" ${busFaultVChecked ? 'checked' : ''}> Tensão pós-falta (Vcc)</label>
-                            </div>
-                            <!-- Line items -->
-                            <div class="tab-pane" id="tabLine" style="display:none;">
-                                <label class="checkbox-label"><input type="checkbox" id="chkLineName" ${lineNameChecked ? 'checked' : ''}> Nome da Linha</label>
-                                <label class="checkbox-label"><input type="checkbox" id="chkLineP" ${linePChecked ? 'checked' : ''}> Potência ativa (P)</label>
-                                <label class="checkbox-label"><input type="checkbox" id="chkLineQ" ${lineQChecked ? 'checked' : ''}> Potência reativa (Q)</label>
-                                <label class="checkbox-label"><input type="checkbox" id="chkLineLoss" ${lineLossChecked ? 'checked' : ''}> Perdas</label>
-                                <label class="checkbox-label"><input type="checkbox" id="chkLineI" ${lineIChecked ? 'checked' : ''}> Corrente</label>
-                                <label class="checkbox-label font-bold" style="color: #f59e0b;"><input type="checkbox" id="chkLineFault" ${lineFaultChecked ? 'checked' : ''}> Contribuição de Falta (Icc ramo)</label>
-                            </div>
-                            <!-- Transformer items with TAP! -->
-                            <div class="tab-pane" id="tabTransf" style="display:none;">
-                                <label class="checkbox-label"><input type="checkbox" id="chkTransfName" ${transfNameChecked ? 'checked' : ''}> Nome do Trafo</label>
-                                <label class="checkbox-label font-bold" style="color: #f59e0b;">
-                                    <input type="checkbox" id="chkTransfTap" ${transfTapChecked ? 'checked' : ''}> Tap (Fixo / OLTC)
-                                </label>
-                                <label class="checkbox-label"><input type="checkbox" id="chkTransfP" ${transfPChecked ? 'checked' : ''}> Potência ativa (P)</label>
-                                <label class="checkbox-label"><input type="checkbox" id="chkTransfQ" ${transfQChecked ? 'checked' : ''}> Potência reativa (Q)</label>
-                                <label class="checkbox-label"><input type="checkbox" id="chkTransfLoss" ${transfLossChecked ? 'checked' : ''}> Perdas</label>
-                                <label class="checkbox-label font-bold" style="color: #f59e0b;"><input type="checkbox" id="chkTransfFault" ${transfFaultChecked ? 'checked' : ''}> Contribuição de Falta (Icc trafo)</label>
-                            </div>
-                            <!-- Generator items -->
-                            <div class="tab-pane" id="tabGen" style="display:none;">
-                                <label class="checkbox-label"><input type="checkbox" id="chkGenName" ${genNameChecked ? 'checked' : ''}> Nome do Gerador</label>
-                                <label class="checkbox-label"><input type="checkbox" id="chkGenP" ${genPChecked ? 'checked' : ''}> Potência ativa (P)</label>
-                                <label class="checkbox-label"><input type="checkbox" id="chkGenQ" ${genQChecked ? 'checked' : ''}> Potência reativa (Q)</label>
-                            </div>
-                            <!-- Load items -->
-                            <div class="tab-pane" id="tabLoad" style="display:none;">
-                                <label class="checkbox-label"><input type="checkbox" id="chkLoadName" ${loadNameChecked ? 'checked' : ''}> Nome da Carga</label>
-                                <label class="checkbox-label"><input type="checkbox" id="chkLoadP" ${loadPChecked ? 'checked' : ''}> Potência ativa (P)</label>
-                                <label class="checkbox-label"><input type="checkbox" id="chkLoadQ" ${loadQChecked ? 'checked' : ''}> Potência reativa (Q)</label>
-                            </div>
-                            <!-- Relay items -->
-                            <div class="tab-pane" id="tabRelay" style="display:none;">
-                                <label class="checkbox-label" style="color:#ef4444;"><input type="checkbox" id="chkRelayTime" ${relayTimeChecked ? 'checked' : ''}> Tempo de Operação</label>
-                                <label class="checkbox-label" style="color:#ef4444;"><input type="checkbox" id="chkRelayI" ${relayIChecked ? 'checked' : ''}> Corrente de Sensibilização</label>
-                            </div>
-                        </div>
-
-                        <div class="form-row" style="margin-top: 12px;">
-                            <label>Casas decimais:</label>
-                            <input type="number" id="lmPrecision" value="3" min="0" max="6" style="width: 70px;" class="form-control">
-                        </div>
-                        <div class="form-row">
-                            <label class="checkbox-label" style="color: var(--danger-color);">
-                                <input type="checkbox" id="chkClearExisting">
-                                Remover todos rótulos existentes
-                            </label>
-                        </div>
+            <div class="modal-card lm-card" role="dialog" aria-modal="true" aria-labelledby="lmTitle">
+                <div class="lm-header">
+                    <div class="lm-header-text">
+                        <h3 id="lmTitle">${i18n.t('labelManager')}</h3>
+                        <p class="lm-subtitle">Escolha as variáveis exibidas junto a cada elemento do diagrama</p>
                     </div>
+                    <button class="lm-close" id="modalClose" aria-label="Fechar">✕</button>
+                </div>
 
-                    <!-- Right: Preview -->
-                    <div style="flex: 0.8; display: flex; flex-direction: column;">
-                        <label style="font-weight: bold; margin-bottom: 4px;">Pré-visualização no Diagrama:</label>
-                        <div id="lmPreviewBox" style="flex: 1; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: 4px; padding: 8px; font-family: 'JetBrains Mono', Consolas, monospace; font-size: 11px; white-space: pre-wrap; overflow-y: auto;">
-                        </div>
+                <div class="lm-search-row">
+                    <div class="lm-search-wrap">
+                        <span class="lm-search-icon" aria-hidden="true">⌕</span>
+                        <input type="search" id="lmSearch" class="lm-search" placeholder="Buscar variável…"
+                               autocomplete="off" aria-label="Buscar variável">
+                    </div>
+                    <div class="lm-precision">
+                        <label for="lmPrecision">Casas decimais</label>
+                        <input type="number" id="lmPrecision" value="3" min="0" max="6" inputmode="numeric">
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button class="btn btn-secondary" id="modalCancel">${i18n.t('dialogs.cancel')}</button>
-                    <button class="btn btn-primary" id="modalApply">${i18n.t('dialogs.apply')}</button>
+
+                <div class="lm-body">
+                    <div class="lm-list" id="lmList">
+                        ${sectionsHtml}
+                        <div class="lm-empty" id="lmEmpty" hidden>Nenhuma variável encontrada para a busca.</div>
+                    </div>
+                    <aside class="lm-preview-panel">
+                        <div class="lm-preview-title">Pré-visualização</div>
+                        <div id="lmPreviewBox" class="lm-preview-box" aria-live="polite"></div>
+                    </aside>
+                </div>
+
+                <div class="lm-footer">
+                    <label class="lm-item lm-item-danger lm-clear">
+                        <input type="checkbox" id="chkClearExisting">
+                        <span class="lm-check" aria-hidden="true"></span>
+                        <span class="lm-item-text">Remover todos os rótulos existentes</span>
+                    </label>
+                    <div class="lm-footer-actions">
+                        <button class="btn btn-secondary lm-btn" id="modalCancel">${i18n.t('dialogs.cancel')}</button>
+                        <button class="btn btn-primary lm-btn" id="modalApply">${i18n.t('dialogs.apply')}</button>
+                    </div>
                 </div>
             </div>
         `;
 
         document.body.appendChild(modal);
 
-        // Tab switching
-        const tabs = modal.querySelectorAll('#lmTabs .tab-btn');
-        tabs.forEach(btn => {
+        // --- Group collapse/expand ---
+        modal.querySelectorAll('[data-group-toggle]').forEach(btn => {
             btn.addEventListener('click', () => {
-                tabs.forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                const target = btn.getAttribute('data-tab');
-                modal.querySelector('#tabBus').style.display = target === 'bus' ? 'block' : 'none';
-                modal.querySelector('#tabLine').style.display = target === 'line' ? 'block' : 'none';
-                modal.querySelector('#tabTransf').style.display = target === 'transf' ? 'block' : 'none';
-                modal.querySelector('#tabGen').style.display = target === 'gen' ? 'block' : 'none';
-                modal.querySelector('#tabLoad').style.display = target === 'load' ? 'block' : 'none';
-                modal.querySelector('#tabRelay').style.display = target === 'relay' ? 'block' : 'none';
+                const id = btn.getAttribute('data-group-toggle');
+                const body = modal.querySelector(`[data-group-body="${id}"]`);
+                const collapsed = body.classList.toggle('collapsed');
+                btn.setAttribute('aria-expanded', String(!collapsed));
             });
         });
 
-        // Dynamic preview update
+        // --- Group counters ---
+        const updateCounts = () => {
+            this.GROUPS.forEach(g => {
+                const total = g.items.length;
+                const active = g.items.filter(it => modal.querySelector('#' + it.id)?.checked).length;
+                const badge = modal.querySelector(`[data-group-count="${g.id}"]`);
+                if (badge) {
+                    badge.textContent = `${active}/${total}`;
+                    badge.classList.toggle('has-active', active > 0);
+                }
+            });
+        };
+
+        // --- Dynamic preview update ---
         const updatePreview = () => {
             const previewBox = modal.querySelector('#lmPreviewBox');
             if (!previewBox) return;
-            const lines = [];
+            const blocks = [];
 
-            const bName = modal.querySelector('#chkBusName')?.checked;
-            const bV = modal.querySelector('#chkBusV')?.checked;
-            const bAng = modal.querySelector('#chkBusAngle')?.checked;
-            const bF = modal.querySelector('#chkBusFault')?.checked;
-            const bFV = modal.querySelector('#chkBusFaultV')?.checked;
+            this.GROUPS.forEach(group => {
+                const activeSamples = group.items
+                    .filter(it => modal.querySelector('#' + it.id)?.checked && it.sample)
+                    .map(it => it.sample);
+                if (activeSamples.length > 0) {
+                    blocks.push(
+                        `<div class="lm-preview-block">` +
+                        `<span class="lm-preview-group">${group.title}</span>` +
+                        activeSamples.map(s => `<span class="lm-chip">${s}</span>`).join('') +
+                        `</div>`
+                    );
+                }
+            });
 
-            if (bName || bV || bAng || bF || bFV) {
-                lines.push('--- [ Barra ] ---');
-                if (bName) lines.push('Barra 1');
-                if (bV) lines.push('1.060 p.u.');
-                if (bAng) lines.push('0.000°');
-                if (bF) lines.push('Icc = 12.450 kA');
-                if (bFV) lines.push('Vcc = 0.000 p.u.');
-            }
-
-            const tName = modal.querySelector('#chkTransfName')?.checked;
-            const tTap = modal.querySelector('#chkTransfTap')?.checked;
-            const tP = modal.querySelector('#chkTransfP')?.checked;
-            const tLoss = modal.querySelector('#chkTransfLoss')?.checked;
-            const tF = modal.querySelector('#chkTransfFault')?.checked;
-
-            if (tName || tTap || tP || tLoss || tF) {
-                if (lines.length > 0) lines.push('');
-                lines.push('--- [ Trafo ] ---');
-                if (tName) lines.push('T 1-2');
-                if (tTap) lines.push('Tap = 0.978 p.u.');
-                if (tP) lines.push('P = 45.200 MW');
-                if (tLoss) lines.push('Perdas = 0.350 MW');
-                if (tF) lines.push('Icc = 4.120 kA');
-            }
-
-            const lName = modal.querySelector('#chkLineName')?.checked;
-            const lP = modal.querySelector('#chkLineP')?.checked;
-            const lQ = modal.querySelector('#chkLineQ')?.checked;
-            const lLoss = modal.querySelector('#chkLineLoss')?.checked;
-            const lI = modal.querySelector('#chkLineI')?.checked;
-            const lF = modal.querySelector('#chkLineFault')?.checked;
-
-            if (lName || lP || lQ || lLoss || lI || lF) {
-                if (lines.length > 0) lines.push('');
-                lines.push('--- [ Linha ] ---');
-                if (lName) lines.push('L 1-2');
-                if (lP) lines.push('P = 32.100 MW');
-                if (lQ) lines.push('Q = 14.500 Mvar');
-                if (lLoss) lines.push('Perdas = 0.420 MW');
-                if (lI) lines.push('134.5 A');
-                if (lF) lines.push('Icc = 6.280 kA');
-            }
-
-            const gName = modal.querySelector('#chkGenName')?.checked;
-            const gP = modal.querySelector('#chkGenP')?.checked;
-            const gQ = modal.querySelector('#chkGenQ')?.checked;
-
-            if (gName || gP || gQ) {
-                if (lines.length > 0) lines.push('');
-                lines.push('--- [ Gerador ] ---');
-                if (gName) lines.push('Gen 1');
-                if (gP) lines.push('P = 100.000 MW');
-                if (gQ) lines.push('Q = 25.000 Mvar');
-            }
-
-            const ldName = modal.querySelector('#chkLoadName')?.checked;
-            const ldP = modal.querySelector('#chkLoadP')?.checked;
-            const ldQ = modal.querySelector('#chkLoadQ')?.checked;
-
-            if (ldName || ldP || ldQ) {
-                if (lines.length > 0) lines.push('');
-                lines.push('--- [ Carga ] ---');
-                if (ldName) lines.push('Load 1');
-                if (ldP) lines.push('P = 30.000 MW');
-                if (ldQ) lines.push('Q = 15.000 Mvar');
-            }
-
-            const rTime = modal.querySelector('#chkRelayTime')?.checked;
-            const rI = modal.querySelector('#chkRelayI')?.checked;
-
-            if (rTime || rI) {
-                if (lines.length > 0) lines.push('');
-                lines.push('--- [ Relé de Proteção ] ---');
-                if (rTime) lines.push('Tempo = INST / 1.234s');
-                if (rI) lines.push('I sensilização = 1.234 kA');
-            }
-
-            previewBox.textContent = lines.join('\n') || '(Nenhum rótulo selecionado)';
+            previewBox.innerHTML = blocks.length
+                ? blocks.join('')
+                : '<span class="lm-preview-empty">Nenhum rótulo selecionado</span>';
         };
 
+        // --- Instant search filter ---
+        const searchInput = modal.querySelector('#lmSearch');
+        const applyFilter = () => {
+            const q = norm(searchInput.value.trim());
+            let anyVisible = false;
+            this.GROUPS.forEach(g => {
+                let groupVisible = 0;
+                g.items.forEach(it => {
+                    const row = modal.querySelector('#' + it.id)?.closest('.lm-item[data-search]');
+                    if (!row) return;
+                    const show = !q || row.getAttribute('data-search').includes(q);
+                    row.style.display = show ? '' : 'none';
+                    if (show) groupVisible++;
+                });
+                const section = modal.querySelector(`[data-group="${g.id}"]`);
+                if (section) section.style.display = groupVisible > 0 ? '' : 'none';
+                if (groupVisible > 0) anyVisible = true;
+            });
+            modal.querySelector('#lmEmpty').hidden = anyVisible;
+        };
+        searchInput.addEventListener('input', applyFilter);
+
         modal.querySelectorAll('input[type="checkbox"]').forEach(chk => {
-            chk.addEventListener('change', updatePreview);
+            chk.addEventListener('change', () => { updatePreview(); updateCounts(); });
         });
         updatePreview();
+        updateCounts();
 
         const close = () => modal.remove();
         modal.querySelector('#modalClose').addEventListener('click', close);
@@ -283,39 +307,39 @@ export class LabelManagerDialog {
             };
 
             // 1. Buses
-            syncLabels(model.buses, LabelDataType.DATA_NAME, modal.querySelector('#chkBusName').checked, 
+            syncLabels(model.buses, LabelDataType.DATA_NAME, modal.querySelector('#chkBusName').checked,
                 (b) => new TextLabel(b, LabelDataType.DATA_NAME, b.x, b.y - 18)
             );
-            syncLabels(model.buses, LabelDataType.DATA_VOLTAGE, modal.querySelector('#chkBusV').checked, 
+            syncLabels(model.buses, LabelDataType.DATA_VOLTAGE, modal.querySelector('#chkBusV').checked,
                 (b) => new TextLabel(b, LabelDataType.DATA_VOLTAGE, b.x + 35, b.y + 12)
             );
-            syncLabels(model.buses, LabelDataType.DATA_ANGLE, modal.querySelector('#chkBusAngle').checked, 
+            syncLabels(model.buses, LabelDataType.DATA_ANGLE, modal.querySelector('#chkBusAngle').checked,
                 (b) => new TextLabel(b, LabelDataType.DATA_ANGLE, b.x + 35, b.y + 26)
             );
-            syncLabels(model.buses, LabelDataType.DATA_SC_CURRENT, modal.querySelector('#chkBusFault').checked, 
+            syncLabels(model.buses, LabelDataType.DATA_SC_CURRENT, modal.querySelector('#chkBusFault').checked,
                 (b) => new TextLabel(b, LabelDataType.DATA_SC_CURRENT, b.x + 35, b.y + 40)
             );
-            syncLabels(model.buses, LabelDataType.DATA_SC_VOLTAGE, modal.querySelector('#chkBusFaultV').checked, 
+            syncLabels(model.buses, LabelDataType.DATA_SC_VOLTAGE, modal.querySelector('#chkBusFaultV').checked,
                 (b) => new TextLabel(b, LabelDataType.DATA_SC_VOLTAGE, b.x + 35, b.y + 54)
             );
 
             // 2. Transformers
-            syncLabels(model.transformers, LabelDataType.DATA_NAME, modal.querySelector('#chkTransfName').checked, 
+            syncLabels(model.transformers, LabelDataType.DATA_NAME, modal.querySelector('#chkTransfName').checked,
                 (t) => new TextLabel(t, LabelDataType.DATA_NAME, t.x + 40, t.y - 24)
             );
-            syncLabels(model.transformers, LabelDataType.DATA_TRANSFORMER_TAP, modal.querySelector('#chkTransfTap').checked, 
+            syncLabels(model.transformers, LabelDataType.DATA_TRANSFORMER_TAP, modal.querySelector('#chkTransfTap').checked,
                 (t) => new TextLabel(t, LabelDataType.DATA_TRANSFORMER_TAP, t.x + 40, t.y - 10)
             );
-            syncLabels(model.transformers, LabelDataType.DATA_PF_ACTIVE, modal.querySelector('#chkTransfP').checked, 
+            syncLabels(model.transformers, LabelDataType.DATA_PF_ACTIVE, modal.querySelector('#chkTransfP').checked,
                 (t) => new TextLabel(t, LabelDataType.DATA_PF_ACTIVE, t.x + 40, t.y + 4)
             );
-            syncLabels(model.transformers, LabelDataType.DATA_PF_REACTIVE, modal.querySelector('#chkTransfQ').checked, 
+            syncLabels(model.transformers, LabelDataType.DATA_PF_REACTIVE, modal.querySelector('#chkTransfQ').checked,
                 (t) => new TextLabel(t, LabelDataType.DATA_PF_REACTIVE, t.x + 40, t.y + 18)
             );
-            syncLabels(model.transformers, LabelDataType.DATA_PF_LOSSES, modal.querySelector('#chkTransfLoss').checked, 
+            syncLabels(model.transformers, LabelDataType.DATA_PF_LOSSES, modal.querySelector('#chkTransfLoss').checked,
                 (t) => new TextLabel(t, LabelDataType.DATA_PF_LOSSES, t.x + 40, t.y + 32)
             );
-            syncLabels(model.transformers, LabelDataType.DATA_SC_CURRENT, modal.querySelector('#chkTransfFault').checked, 
+            syncLabels(model.transformers, LabelDataType.DATA_SC_CURRENT, modal.querySelector('#chkTransfFault').checked,
                 (t) => new TextLabel(t, LabelDataType.DATA_SC_CURRENT, t.x + 40, t.y + 46)
             );
 
@@ -326,33 +350,33 @@ export class LabelManagerDialog {
                 return { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
             };
 
-            syncLabels(model.lines, LabelDataType.DATA_NAME, modal.querySelector('#chkLineName').checked, 
+            syncLabels(model.lines, LabelDataType.DATA_NAME, modal.querySelector('#chkLineName').checked,
                 (l) => { const mid = getLineMid(l); return new TextLabel(l, LabelDataType.DATA_NAME, mid.x + 15, mid.y - 24); }
             );
-            syncLabels(model.lines, LabelDataType.DATA_PF_ACTIVE, modal.querySelector('#chkLineP').checked, 
+            syncLabels(model.lines, LabelDataType.DATA_PF_ACTIVE, modal.querySelector('#chkLineP').checked,
                 (l) => { const mid = getLineMid(l); return new TextLabel(l, LabelDataType.DATA_PF_ACTIVE, mid.x + 15, mid.y - 10); }
             );
-            syncLabels(model.lines, LabelDataType.DATA_PF_REACTIVE, modal.querySelector('#chkLineQ').checked, 
+            syncLabels(model.lines, LabelDataType.DATA_PF_REACTIVE, modal.querySelector('#chkLineQ').checked,
                 (l) => { const mid = getLineMid(l); return new TextLabel(l, LabelDataType.DATA_PF_REACTIVE, mid.x + 15, mid.y + 4); }
             );
-            syncLabels(model.lines, LabelDataType.DATA_PF_LOSSES, modal.querySelector('#chkLineLoss').checked, 
+            syncLabels(model.lines, LabelDataType.DATA_PF_LOSSES, modal.querySelector('#chkLineLoss').checked,
                 (l) => { const mid = getLineMid(l); return new TextLabel(l, LabelDataType.DATA_PF_LOSSES, mid.x + 15, mid.y + 18); }
             );
-            syncLabels(model.lines, LabelDataType.DATA_PF_CURRENT, modal.querySelector('#chkLineI').checked, 
+            syncLabels(model.lines, LabelDataType.DATA_PF_CURRENT, modal.querySelector('#chkLineI').checked,
                 (l) => { const mid = getLineMid(l); return new TextLabel(l, LabelDataType.DATA_PF_CURRENT, mid.x + 15, mid.y + 32); }
             );
-            syncLabels(model.lines, LabelDataType.DATA_SC_CURRENT, modal.querySelector('#chkLineFault').checked, 
+            syncLabels(model.lines, LabelDataType.DATA_SC_CURRENT, modal.querySelector('#chkLineFault').checked,
                 (l) => { const mid = getLineMid(l); return new TextLabel(l, LabelDataType.DATA_SC_CURRENT, mid.x + 15, mid.y + 46); }
             );
 
             // 4. Generators
-            syncLabels(model.generators, LabelDataType.DATA_NAME, modal.querySelector('#chkGenName').checked, 
+            syncLabels(model.generators, LabelDataType.DATA_NAME, modal.querySelector('#chkGenName').checked,
                 (g) => new TextLabel(g, LabelDataType.DATA_NAME, g.x, g.y - 26)
             );
-            syncLabels(model.generators, LabelDataType.DATA_ACTIVE_POWER, modal.querySelector('#chkGenP').checked, 
+            syncLabels(model.generators, LabelDataType.DATA_ACTIVE_POWER, modal.querySelector('#chkGenP').checked,
                 (g) => new TextLabel(g, LabelDataType.DATA_ACTIVE_POWER, g.x + 28, g.y - 8)
             );
-            syncLabels(model.generators, LabelDataType.DATA_REACTIVE_POWER, modal.querySelector('#chkGenQ').checked, 
+            syncLabels(model.generators, LabelDataType.DATA_REACTIVE_POWER, modal.querySelector('#chkGenQ').checked,
                 (g) => new TextLabel(g, LabelDataType.DATA_REACTIVE_POWER, g.x + 28, g.y + 8)
             );
 
