@@ -120,15 +120,414 @@ export class Canvas {
 
     initEvents() {
         const el = this.canvas;
+        // Pointer Events unificam mouse/touch/pen — corrige arraste no celular (t-touch-1)
+        this._activePointers = new Map();
+        this._pinch = null;
 
-        el.addEventListener('mousedown', (e) => this.onMouseDown(e));
-        window.addEventListener('mousemove', (e) => this.onMouseMove(e));
-        window.addEventListener('mouseup', (e) => this.onMouseUp(e));
+        el.addEventListener('pointerdown', (e) => this.onPointerDown(e), { passive: false });
+        window.addEventListener('pointermove', (e) => this.onPointerMove(e), { passive: false });
+        window.addEventListener('pointerup', (e) => this.onPointerUp(e), { passive: false });
+        window.addEventListener('pointercancel', (e) => this.onPointerCancel(e), { passive: false });
+        // Fallback mouse para navegadores sem PointerEvent (evita duplo disparo quando PointerEvent existe)
+        el.addEventListener('mousedown', (e) => { if (window.PointerEvent) return; this.onMouseDown(e); });
+        window.addEventListener('mousemove', (e) => { if (window.PointerEvent) return; this.onMouseMove(e); });
+        window.addEventListener('mouseup', (e) => { if (window.PointerEvent) return; this.onMouseUp(e); });
         el.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
         el.addEventListener('dblclick', (e) => this.onDoubleClick(e));
         el.addEventListener('contextmenu', (e) => this.onContextMenu(e));
         window.addEventListener('keydown', (e) => this.onKeyDown(e));
     }
+
+    // ——— Pointer helpers (unificam mouse/touch/pen) ———
+    _getCanvasScreenPos(e) {
+        const rect = this.canvas.getBoundingClientRect();
+        return { sx: e.clientX - rect.left, sy: e.clientY - rect.top, rect };
+    }
+
+    _getPinchState() {
+        if (this._activePointers.size < 2) return null;
+        const pts = [...this._activePointers.values()];
+        const p0 = pts[0], p1 = pts[1];
+        const dx = p0.x - p1.x, dy = p0.y - p1.y;
+        return {
+            dist: Math.hypot(dx, dy),
+            centerX: (p0.x + p1.x) / 2,
+            centerY: (p0.y + p1.y) / 2
+        };
+    }
+
+    onPointerDown(e) {
+        const isTouch = e.pointerType === 'touch';
+        this._activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        try { this.canvas.setPointerCapture(e.pointerId); } catch (_) {}
+
+        const count = this._activePointers.size;
+        if (isTouch && count === 2) {
+            const pinchNow = this._getPinchState();
+            if (pinchNow) {
+                this._pinch = { prevDist: pinchNow.dist, prevCenterX: pinchNow.centerX, prevCenterY: pinchNow.centerY };
+            }
+            if (this.isDragging || this.isPanning || this.isResizing) {
+                this._endDragAndSnap();
+                this.isPanning = false;
+                this.isResizing = false;
+                this.resizeTarget = null;
+                this.resizeHandle = null;
+            }
+            if (this.isSelectingBox) { this.isSelectingBox = false; }
+            e.preventDefault();
+            return;
+        }
+        if (isTouch && count > 2) { e.preventDefault(); return; }
+
+        const { sx, sy } = this._getCanvasScreenPos(e);
+        const worldPos = this.screenToWorld(sx, sy);
+        const pointerType = e.pointerType || 'mouse';
+
+        if (!isTouch) {
+            if (e.button === 1 || (e.button === 0 && e.spaceKey)) {
+                this.isPanning = true;
+                this.dragStart = { x: sx, y: sy };
+                this.canvas.style.cursor = 'grab';
+                return;
+            }
+            if (e.button !== 0) return;
+        } else {
+            e.preventDefault();
+        }
+
+        if (this.activeTool !== 'select') {
+            this.handleToolClick(worldPos);
+            return;
+        }
+
+        const breakerHit = this.hitTestBreaker(worldPos.x, worldPos.y);
+        if (breakerHit) {
+            const el = breakerHit.element;
+            const terminal = breakerHit.box.terminal ?? 0;
+            if (el.type === 'Line' || el.type === 'Transformer') {
+                if (terminal === 0) el.breakerFrom = el.breakerFrom === false ? true : false;
+                else el.breakerTo = el.breakerTo === false ? true : false;
+            } else {
+                el.isOnline = !el.isOnline;
+            }
+            const isTerminalClosed = (el.type === 'Line' || el.type === 'Transformer')
+                ? (terminal === 0 ? el.breakerFrom !== false : el.breakerTo !== false)
+                : el.isOnline;
+            if (el.results && el.type === 'Line' && !el.isEffectivelyOnline()) {
+                el.results.p12 = 0.0; el.results.q12 = 0.0; el.results.p21 = 0.0; el.results.q21 = 0.0;
+                el.results.pLoss = 0.0; el.results.qLoss = 0.0; el.results.i12 = 0.0; el.results.i21 = 0.0;
+                el.results.direction = 0; el.results.faultFlowKA = 0.0; el.results.faultDirection = 0;
+                el.results.faultCurrent12 = [0, 0, 0]; el.results.faultCurrent21 = [0, 0, 0];
+            } else if (el.results && el.type === 'Transformer' && !el.isEffectivelyOnline()) {
+                el.results.p12 = 0.0; el.results.q12 = 0.0; el.results.p21 = 0.0; el.results.q21 = 0.0;
+                el.results.pLoss = 0.0; el.results.qLoss = 0.0; el.results.i12 = 0.0; el.results.i21 = 0.0;
+                el.results.faultFlowKA = 0.0; el.results.faultDirection = 0;
+                el.results.faultCurrent12 = [0, 0, 0]; el.results.faultCurrent21 = [0, 0, 0];
+            } else if (el.results && !el.isOnline) {
+                el.results.p12 = 0.0; el.results.q12 = 0.0; el.results.p21 = 0.0; el.results.q21 = 0.0;
+                el.results.pLoss = 0.0; el.results.qLoss = 0.0; el.results.i12 = 0.0; el.results.i21 = 0.0;
+                el.results.direction = 0; el.results.p = 0.0; el.results.q = 0.0;
+            }
+            this.model.updateAllLabels();
+            this.app.rerunPowerFlowIfNeeded();
+            this.requestRender();
+            if (this.app.showMessage) {
+                const termLabel = terminal === 0 ? 'Primário' : 'Secundário';
+                let statusStr;
+                if (el.type === 'Line' || el.type === 'Transformer') {
+                    if (el.isHalfOpen) statusStr = `DJ ${termLabel}: ABERTO (meia-aberta — um terminal aberto)`;
+                    else statusStr = isTerminalClosed ? `DJ ${termLabel}: FECHADO` : `DJ ${termLabel}: ABERTO`;
+                } else statusStr = el.isOnline ? 'LIGADO (em operação)' : 'DESLIGADO (fora de operação)';
+                this.app.showMessage(`${el.name}: ${statusStr}`);
+            }
+            return;
+        }
+
+        const handleHit = this.hitTestSelectedBusHandles(worldPos.x, worldPos.y, pointerType);
+        if (handleHit) {
+            this.isResizing = true;
+            this.resizeTarget = handleHit.bus;
+            this.resizeHandle = handleHit.handle;
+            this.canvas.style.cursor = this.getResizeCursor(handleHit.bus);
+            if (isTouch) e.preventDefault();
+            return;
+        }
+
+        const hit = this.hitTest(worldPos.x, worldPos.y);
+        if (hit instanceof Relay) {
+            if (!this.selectedElements.includes(hit)) {
+                this.clearSelection();
+                this.selectedElements = [hit];
+                hit.selected = true;
+            }
+            this.isDragging = true;
+            this.dragStart = { x: worldPos.x, y: worldPos.y };
+            if (isTouch) e.preventDefault();
+            this.requestRender();
+            return;
+        }
+        if (hit) {
+            const modKey = e.shiftKey || e.ctrlKey || e.metaKey;
+            if (modKey && !isTouch) {
+                const idx = this.selectedElements.indexOf(hit);
+                if (idx >= 0) { this.selectedElements.splice(idx, 1); hit.selected = false; }
+                else { this.selectedElements.push(hit); hit.selected = true; }
+            } else {
+                if (!this.selectedElements.includes(hit)) {
+                    this.clearSelection();
+                    this.selectedElements = [hit];
+                    hit.selected = true;
+                }
+            }
+            this.isDragging = true;
+            this.dragStart = { x: worldPos.x, y: worldPos.y };
+            if (isTouch) e.preventDefault();
+        } else {
+            if (isTouch) {
+                this.isPanning = true;
+                this.dragStart = { x: sx, y: sy };
+                this.canvas.style.cursor = 'grabbing';
+            } else {
+                if (!e.shiftKey && !e.ctrlKey) this.clearSelection();
+                this.isSelectingBox = true;
+                this.selectionBox = { x1: worldPos.x, y1: worldPos.y, x2: worldPos.x, y2: worldPos.y };
+            }
+        }
+        this.requestRender();
+    }
+
+    onPointerMove(e) {
+        if (this._activePointers.has(e.pointerId)) {
+            this._activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        }
+        const isTouch = e.pointerType === 'touch';
+        const count = this._activePointers.size;
+
+        if (isTouch && count >= 2) {
+            const pinchNow = this._getPinchState();
+            if (pinchNow && this._pinch) {
+                const prevDist = this._pinch.prevDist;
+                const prevCX = this._pinch.prevCenterX;
+                const prevCY = this._pinch.prevCenterY;
+                const curDist = pinchNow.dist;
+                const curCX = pinchNow.centerX;
+                const curCY = pinchNow.centerY;
+                const rect = this.canvas.getBoundingClientRect();
+                const prevCXs = prevCX - rect.left, prevCYs = prevCY - rect.top;
+                const curCXs = curCX - rect.left, curCYs = curCY - rect.top;
+                const dCX = curCXs - prevCXs, dCY = curCYs - prevCYs;
+                if (dCX !== 0 || dCY !== 0) {
+                    this.camera.x += dCX;
+                    this.camera.y += dCY;
+                }
+                if (prevDist > 0.5 && curDist > 0.5) {
+                    const factor = curDist / prevDist;
+                    const oldScale = this.camera.scale;
+                    const newScale = Math.max(0.2, Math.min(4.0, oldScale * factor));
+                    if (newScale !== oldScale) {
+                        this.camera.x = curCXs - (curCXs - this.camera.x) * (newScale / oldScale);
+                        this.camera.y = curCYs - (curCYs - this.camera.y) * (newScale / oldScale);
+                        this.camera.scale = newScale;
+                    }
+                }
+                this._pinch.prevDist = curDist;
+                this._pinch.prevCenterX = curCX;
+                this._pinch.prevCenterY = curCY;
+                this.requestRender();
+            } else if (pinchNow) {
+                this._pinch = { prevDist: pinchNow.dist, prevCenterX: pinchNow.centerX, prevCenterY: pinchNow.centerY };
+            }
+            e.preventDefault();
+            return;
+        }
+
+        const needsPrevent = this.isDragging || this.isPanning || this.isResizing || this.isSelectingBox || this._pinch;
+        if (isTouch && needsPrevent) e.preventDefault();
+
+        if (!this._activePointers.has(e.pointerId) && isTouch && count === 0) return;
+        // Use pointer's screen position when available; fallback to stored map single pointer
+        let sx, sy;
+        if (typeof e.clientX === 'number') {
+            const pos = this._getCanvasScreenPos(e);
+            sx = pos.sx; sy = pos.sy;
+        } else if (count === 1) {
+            const pt = [...this._activePointers.values()][0];
+            const rect = this.canvas.getBoundingClientRect();
+            sx = pt.x - rect.left; sy = pt.y - rect.top;
+        } else return;
+        const worldPos = this.screenToWorld(sx, sy);
+
+        if (this.isPanning) {
+            this.camera.x += sx - this.dragStart.x;
+            this.camera.y += sy - this.dragStart.y;
+            this.dragStart = { x: sx, y: sy };
+            this.requestRender();
+            return;
+        }
+        if (this.isResizing && this.resizeTarget) {
+            const bus = this.resizeTarget;
+            const isVertical = (bus.angle === 90 || bus.angle === 270);
+            const snappedX = this.snap(worldPos.x);
+            const snappedY = this.snap(worldPos.y);
+            const wx = isVertical ? bus.x : snappedX;
+            const wy = isVertical ? snappedY : bus.y;
+            const shift = bus.resizeFromHandle(this.resizeHandle, wx, wy, 40);
+            if ((shift.dx !== 0 || shift.dy !== 0) && this.model.textLabels) {
+                for (const lbl of this.model.textLabels) {
+                    if (lbl.parentElement === bus && !this.selectedElements.includes(lbl)) lbl.move(shift.dx, shift.dy);
+                }
+            }
+            this.updateBusConnections(bus);
+            this.requestRender();
+            return;
+        }
+        if (this.isDragging) {
+            const dx = worldPos.x - this.dragStart.x;
+            const dy = worldPos.y - this.dragStart.y;
+            const busesBeingDraggedDirectly = new Set();
+            for (const item of this.selectedElements) if (item instanceof Bus) busesBeingDraggedDirectly.add(item);
+            const movedItems = new Set();
+            for (const item of this.selectedElements) {
+                if (!movedItems.has(item)) { item.move(dx, dy); movedItems.add(item); }
+                if (item.type !== 'TextLabel') {
+                    for (const lbl of this.model.textLabels) {
+                        if (lbl.parentElement === item && !this.selectedElements.includes(lbl) && !movedItems.has(lbl)) { lbl.move(dx, dy); movedItems.add(lbl); }
+                    }
+                }
+            }
+            const linesMoved = new Set();
+            for (const item of movedItems) if (item instanceof Line) linesMoved.add(item);
+            for (const bus of busesBeingDraggedDirectly) {
+                for (const line of this.model.lines) {
+                    if (!line.pointList || line.pointList.length < 2) continue;
+                    const fromMovedRigidly = linesMoved.has(line);
+                    if (line.fromBus === bus && !fromMovedRigidly) {
+                        const ref = line.toBus || line.pointList[line.pointList.length - 1];
+                        line.pointList[0] = bus.getClosestPointOnBar(ref.x, ref.y);
+                    }
+                    if (line.toBus === bus && !fromMovedRigidly) {
+                        const ref = line.fromBus || line.pointList[0];
+                        line.pointList[line.pointList.length - 1] = bus.getClosestPointOnBar(ref.x, ref.y);
+                    }
+                }
+            }
+            for (const line of linesMoved) {
+                if (!line.pointList || line.pointList.length < 2) continue;
+                if (line.fromBus && !busesBeingDraggedDirectly.has(line.fromBus)) line.pointList[0] = line.fromBus.getClosestPointOnBar(line.pointList[0].x, line.pointList[0].y);
+                if (line.toBus && !busesBeingDraggedDirectly.has(line.toBus)) line.pointList[line.pointList.length - 1] = line.toBus.getClosestPointOnBar(line.pointList[line.pointList.length - 1].x, line.pointList[line.pointList.length - 1].y);
+            }
+            this.dragStart = { x: worldPos.x, y: worldPos.y };
+            this.requestRender();
+            return;
+        }
+        if (this.isSelectingBox) {
+            this.selectionBox.x2 = worldPos.x;
+            this.selectionBox.y2 = worldPos.y;
+            this.requestRender();
+            return;
+        }
+        if (this.wiringStartBus) { this.wiringCurrentPoint = worldPos; this.requestRender(); return; }
+        if (this.activeTool === 'select') {
+            const handleHit = this.hitTestSelectedBusHandles(worldPos.x, worldPos.y, e.pointerType || 'mouse');
+            if (handleHit) {
+                const cursor = this.getResizeCursor(handleHit.bus);
+                if (this.canvas.style.cursor !== cursor) this.canvas.style.cursor = cursor;
+                return;
+            }
+            if (this.canvas.style.cursor === 'ew-resize' || this.canvas.style.cursor === 'ns-resize') this.canvas.style.cursor = 'default';
+        }
+        const breakerHit = this.hitTestBreaker(worldPos.x, worldPos.y);
+        if (breakerHit) {
+            if (this.hoveredBreaker?.box !== breakerHit.box) {
+                this.hoveredBreaker = breakerHit;
+                this.canvas.style.cursor = 'pointer';
+                const el = breakerHit.element;
+                const terminal = breakerHit.box.terminal ?? 0;
+                let st;
+                if (el.type === 'Line' || el.type === 'Transformer') {
+                    const termOnline = el.isTerminalOnline ? el.isTerminalOnline(terminal) : el.isOnline;
+                    st = termOnline ? 'Fechado (Ligado)' : 'Aberto (Desligado)';
+                    const termLabel = terminal === 0 ? 'Primário' : 'Secundário';
+                    this.canvas.title = `Disjuntor ${termLabel} (${el.name}): ${st} - Clique para alternar`;
+                } else { st = el.isOnline ? 'Fechado (Ligado)' : 'Aberto (Desligado)'; this.canvas.title = `Disjuntor (${el.name}): ${st} - Clique para alternar`; }
+                this.requestRender();
+            }
+            return;
+        } else if (this.hoveredBreaker) { this.hoveredBreaker = null; this.canvas.title = ''; this.requestRender(); }
+        const hit = this.hitTest(worldPos.x, worldPos.y);
+        if (this.hoveredElement !== hit) {
+            if (this.hoveredElement) this.hoveredElement.hovered = false;
+            this.hoveredElement = hit;
+            if (this.hoveredElement) this.hoveredElement.hovered = true;
+            this.canvas.style.cursor = hit ? 'pointer' : (this.activeTool === 'select' ? 'default' : 'crosshair');
+            this.requestRender();
+        }
+    }
+
+    _endDragAndSnap() {
+        if (!this.isDragging) return;
+        this.isDragging = false;
+        if (this.snapEnabled) {
+            const labelShifts = new Map();
+            const snappedBuses = [];
+            for (const item of this.selectedElements) {
+                if (item.type !== 'TextLabel') {
+                    const oldX = item.x, oldY = item.y;
+                    item.snapToGrid(this.gridSize);
+                    const shiftX = item.x - oldX, shiftY = item.y - oldY;
+                    if (shiftX !== 0 || shiftY !== 0) { labelShifts.set(item, { shiftX, shiftY }); if (item instanceof Bus) snappedBuses.push(item); }
+                } else { const fineGrid = Math.min(this.gridSize, 5); item.snapToGrid(fineGrid); }
+            }
+            for (const [parentEl, shift] of labelShifts.entries()) {
+                for (const lbl of this.model.textLabels) if (lbl.parentElement === parentEl && !this.selectedElements.includes(lbl)) lbl.move(shift.shiftX, shift.shiftY);
+            }
+            const selectedSet = new Set(this.selectedElements);
+            for (const bus of snappedBuses) {
+                for (const line of this.model.lines) {
+                    if (!line.pointList || line.pointList.length < 2) continue;
+                    const lineAlsoSnapped = selectedSet.has(line);
+                    if (line.fromBus === bus && !lineAlsoSnapped) { const ref = line.toBus || line.pointList[line.pointList.length - 1]; line.pointList[0] = bus.getClosestPointOnBar(ref.x, ref.y); }
+                    if (line.toBus === bus && !lineAlsoSnapped) { const ref = line.fromBus || line.pointList[0]; line.pointList[line.pointList.length - 1] = bus.getClosestPointOnBar(ref.x, ref.y); }
+                }
+            }
+            for (const line of this.model.lines) {
+                if (!selectedSet.has(line)) continue;
+                if (!line.pointList || line.pointList.length < 2) continue;
+                if (line.fromBus && !selectedSet.has(line.fromBus)) { const ref = line.toBus || line.pointList[line.pointList.length - 1]; line.pointList[0] = line.fromBus.getClosestPointOnBar(ref.x, ref.y); }
+                if (line.toBus && !selectedSet.has(line.toBus)) { const ref = line.fromBus || line.pointList[0]; line.pointList[line.pointList.length - 1] = line.toBus.getClosestPointOnBar(ref.x, ref.y); }
+            }
+        }
+        this.requestRender();
+    }
+
+    onPointerUp(e) {
+        const wasTouch = e.pointerType === 'touch';
+        this._activePointers.delete(e.pointerId);
+        try { this.canvas.releasePointerCapture(e.pointerId); } catch (_) {}
+        if (wasTouch && this._activePointers.size >= 2) {
+            const pinchNow = this._getPinchState();
+            if (pinchNow) this._pinch = { prevDist: pinchNow.dist, prevCenterX: pinchNow.centerX, prevCenterY: pinchNow.centerY };
+            return;
+        }
+        if (wasTouch && this._pinch && this._activePointers.size < 2) this._pinch = null;
+        if (this.isPanning) { this.isPanning = false; this.canvas.style.cursor = 'default'; }
+        if (this.isResizing) { this.isResizing = false; this.resizeTarget = null; this.resizeHandle = null; this.canvas.style.cursor = 'default'; this.requestRender(); }
+        if (this.isDragging) this._endDragAndSnap();
+        if (this.isSelectingBox) {
+            this.isSelectingBox = false;
+            this.isResizing = false;
+            this.resizeTarget = null;
+            this.resizeHandle = null;
+            const sb = this.selectionBox;
+            const minX = Math.min(sb.x1, sb.x2), maxX = Math.max(sb.x1, sb.x2), minY = Math.min(sb.y1, sb.y2), maxY = Math.max(sb.y1, sb.y2);
+            const all = [...this.model.getAllElements(), ...this.model.textLabels];
+            for (const item of all) if (item.intersectsBox(minX, minY, maxX, maxY)) if (!this.selectedElements.includes(item)) { this.selectedElements.push(item); item.selected = true; }
+            this.requestRender();
+        }
+    }
+
+    onPointerCancel(e) { this._activePointers.delete(e.pointerId); if (this._activePointers.size < 2) this._pinch = null; this.isDragging = false; this.isPanning = false; this.isResizing = false; this.isSelectingBox = false; this.resizeTarget = null; this.resizeHandle = null; this.canvas.style.cursor = 'default'; try { this.canvas.releasePointerCapture(e.pointerId); } catch (_) {} }
 
     onKeyDown(e) {
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
@@ -179,7 +578,7 @@ export class Canvas {
         if (e.button === 1 || (e.button === 0 && e.spaceKey)) {
             this.isPanning = true;
             this.dragStart = { x: sx, y: sy };
-            el.style.cursor = 'grab';
+            this.canvas.style.cursor = 'grab';
             return;
         }
 
@@ -809,13 +1208,15 @@ export class Canvas {
 
     /**
      * Hit-tests resize handles of any currently selected bus.
-     * Returns { bus, handle } or null.
+     * Returns { bus, handle } or null. Touch uses expanded hit area (>=24px screen per skill 2.2).
      */
-    hitTestSelectedBusHandles(wx, wy) {
+    hitTestSelectedBusHandles(wx, wy, pointerType = 'mouse') {
         if (this.activeTool !== 'select') return null;
+        const isTouch = pointerType === 'touch';
+        const tol = isTouch ? (24 / Math.max(0.2, this.camera.scale)) : 6;
         for (const item of this.selectedElements) {
             if (item instanceof Bus && typeof item.hitTestHandle === 'function') {
-                const handle = item.hitTestHandle(wx, wy);
+                const handle = item.hitTestHandle(wx, wy, tol);
                 if (handle) return { bus: item, handle };
             }
         }
